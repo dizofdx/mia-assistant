@@ -1,0 +1,4233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Astra · Мия — Голосовой ИИ-компаньон для Windows</title>
+  
+  <!-- PWA & Android Meta -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Мия Connect">
+  <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+  <!-- Шрифты (Inter & JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Three.js и GLTFLoader для 3D аватара (локально + офлайн) -->
+  <script src="/static/three.min.js"></script>
+  <script src="/static/GLTFLoader.js"></script>
+
+  <!-- MapLibre GL JS для интерактивной карты -->
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-card: rgba(18, 18, 24, 0.75);
+      --bg-card-hover: rgba(26, 26, 36, 0.88);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-glow: rgba(203, 166, 247, 0.35);
+
+      --color-text: #f3f4f6;
+      --color-text-muted: #9ca3af;
+      --color-text-dim: #6b7280;
+
+      --primary: #cba6f7;
+      --primary-hover: #d8b4fe;
+      --primary-glow: rgba(203, 166, 247, 0.4);
+
+      --cyan: #89b4fa;
+      --cyan-glow: rgba(137, 180, 250, 0.35);
+
+      --green: #a6e3a1;
+      --pink: #f38ba8;
+      --yellow: #f9e2af;
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-full: 9999px;
+
+      --transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--color-text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.5;
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Фоновые радиальные градиенты Astra */
+    .ambient-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .glow-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.18;
+      pointer-events: none;
+    }
+    .orb-1 { width: 550px; height: 550px; background: #cba6f7; top: -120px; left: -100px; }
+    .orb-2 { width: 500px; height: 500px; background: #89b4fa; bottom: 0%; right: -80px; }
+    .orb-3 { width: 350px; height: 350px; background: #f38ba8; top: 40%; left: 35%; opacity: 0.12; }
+
+    /* ГЛАВНЫЙ КОНТЕЙНЕР ОКНА ASTRA */
+    .app-viewport {
+      position: relative;
+      z-index: 10;
+      max-width: 1180px;
+      margin: 16px auto 40px;
+      padding: 0 16px;
+    }
+
+    /* РАМКА ОКНА ASTRA (aam-frame / aam-window) */
+    .aam-window {
+      background: rgba(14, 14, 18, 0.88);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65), 0 0 1px rgba(255, 255, 255, 0.15);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 820px;
+    }
+
+    /* ВЕРХНЯЯ ПАНЕЛЬ ТАЙТЛБАРА (aam-titlebar) */
+    .aam-titlebar {
+      position: relative;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(10, 10, 14, 0.6);
+      user-select: none;
+    }
+    .aam-traffic {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      -webkit-app-region: no-drag !important;
+      pointer-events: auto !important;
+    }
+    .aam-traffic__dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      cursor: pointer !important;
+      transition: opacity 0.2s;
+      -webkit-app-region: no-drag !important;
+      pointer-events: auto !important;
+    }
+    .aam-traffic__dot:hover { opacity: 0.8; }
+    .dot-close { background: #ff5f56; }
+    .dot-min { background: #ffbd2e; }
+    .dot-max { background: #27c93f; }
+
+    .aam-titlebar__title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .aam-titlebar__title span.brand-spark {
+      color: var(--primary);
+      text-shadow: 0 0 10px var(--primary-glow);
+    }
+    .aam-titlebar__actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      -webkit-app-region: no-drag !important;
+      pointer-events: auto !important;
+    }
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--green);
+      background: rgba(166, 227, 161, 0.1);
+      border: 1px solid rgba(166, 227, 161, 0.2);
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .dot-pulse {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+    /* ВКЛАДКИ НАВИГАЦИИ (aam-tabs) */
+    .aam-tabs {
+      position: relative;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      padding: 8px 16px;
+      gap: 6px;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(12, 12, 16, 0.4);
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-app-region: no-drag !important;
+      pointer-events: auto !important;
+    }
+    .aam-tabs::-webkit-scrollbar { display: none; }
+
+    .aam-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-muted);
+      border-radius: var(--radius-sm);
+      cursor: pointer !important;
+      transition: var(--transition);
+      border: 1px solid transparent;
+      white-space: nowrap;
+      user-select: none;
+      -webkit-app-region: no-drag !important;
+      pointer-events: auto !important;
+    }
+    .aam-tab svg { width: 16px; height: 16px; opacity: 0.75; transition: opacity 0.2s; }
+    .aam-tab:hover {
+      color: var(--color-text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .aam-tab.active {
+      color: #fff;
+      background: rgba(203, 166, 247, 0.12);
+      border-color: rgba(203, 166, 247, 0.28);
+      font-weight: 600;
+    }
+    .aam-tab.active svg { opacity: 1; stroke: var(--primary); }
+
+    /* ОСНОВНОЙ КОНТЕНТ ВНУТРИ ОКНА */
+    .aam-content {
+      flex: 1;
+      padding: 22px 24px 30px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .tab-pane.active { display: flex; }
+    @keyframes fadeIn { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+    /* === СТИЛИ ДАШБОРДА (ГЛАВНАЯ) === */
+    .aam-home-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    .aam-brand-title {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .aam-brand-title .star {
+      color: var(--primary);
+      text-shadow: 0 0 16px var(--primary-glow);
+    }
+    .aam-subtitle {
+      font-size: 13px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+    .aam-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button.aam-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 9px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--transition);
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--color-text);
+      font-family: inherit;
+    }
+    button.aam-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+    button.aam-btn--launch {
+      background: linear-gradient(135deg, var(--primary), #b4befe);
+      color: #0e0e12;
+      border-color: transparent;
+      box-shadow: 0 4px 18px var(--primary-glow);
+    }
+    button.aam-btn--launch:hover {
+      box-shadow: 0 6px 24px var(--primary-glow);
+      transform: translateY(-2px);
+    }
+
+    /* СЕТКА ВИДЖЕТОВ ASTRA */
+    .aam-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 18px;
+      margin-top: 6px;
+    }
+    @media (max-width: 900px) {
+      .aam-grid { grid-template-columns: 1fr; }
+    }
+
+    .glass-tile {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      transition: var(--transition);
+      position: relative;
+    }
+    .glass-tile:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    /* ВИДЖЕТ МУЗЫКИ ASTRA (aam-music) */
+    .aam-music {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .aam-music__top {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .aam-music__cover {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: radial-gradient(circle, #2a2b3d 25%, #181924 70%, #cba6f7 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      box-shadow: 0 4px 20px rgba(203, 166, 247, 0.25);
+      animation: vinylSpin 14s linear infinite;
+    }
+    @keyframes vinylSpin { 100%{ transform: rotate(360deg); } }
+
+    .aam-music__info { flex: 1; min-width: 0; }
+    .aam-music__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .aam-music__artist {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+    .aam-music__progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--color-text-dim);
+    }
+    .aam-music__track {
+      flex: 1;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-full);
+      position: relative;
+      cursor: pointer;
+    }
+    .aam-music__track-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--primary));
+      border-radius: var(--radius-full);
+      width: 42%;
+      transition: width 0.3s ease;
+    }
+    .aam-music__track-thumb {
+      position: absolute;
+      top: 50%;
+      left: 42%;
+      transform: translate(-50%, -50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 8px var(--primary);
+    }
+    .aam-music__controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .aam-ctrl-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--color-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .aam-ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      transform: scale(1.06);
+    }
+    .aam-ctrl-btn--play {
+      width: 46px;
+      height: 46px;
+      background: linear-gradient(135deg, var(--primary), var(--cyan));
+      color: #0e0e12;
+      border-color: transparent;
+      box-shadow: 0 0 18px var(--primary-glow);
+    }
+
+    /* ПОГОДА И ВАЛЮТА (aam-w-tl) */
+    .weather-currency-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .aam-weather {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .aam-weather__icon svg {
+      width: 44px;
+      height: 44px;
+      stroke: var(--yellow);
+      animation: rotateSun 24s linear infinite;
+    }
+    @keyframes rotateSun { 100%{ transform: rotate(360deg); } }
+
+    .aam-weather__temp { font-size: 24px; font-weight: 700; color: #fff; }
+    .aam-weather__desc { font-size: 12px; color: var(--color-text-muted); }
+
+    .aam-currency {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .aam-currency__symbol {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(137, 180, 250, 0.1);
+      border: 1px solid rgba(137, 180, 250, 0.2);
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .aam-currency__pair { font-size: 11px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; }
+    .aam-currency__rate { font-size: 18px; font-weight: 700; color: #fff; }
+    .aam-currency__change--up { font-size: 11px; color: var(--green); font-weight: 600; margin-left: 6px; }
+
+    /* МОНИТОРИНГ СИСТЕМЫ (aam-system) */
+    .aam-system {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .aam-sys-item { display: flex; flex-direction: column; gap: 5px; }
+    .aam-sys-item__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .aam-sys-item__label { display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); }
+    .aam-sys-item__value { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #fff; }
+    .aam-bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+    .aam-bar__fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 0.4s ease;
+    }
+    .fill-cpu { background: linear-gradient(90deg, var(--cyan), var(--primary)); }
+    .fill-ram { background: linear-gradient(90deg, var(--primary), var(--pink)); }
+    .fill-gpu { background: linear-gradient(90deg, var(--green), var(--cyan)); }
+
+    /* БЫСТРЫЕ КНОПКИ ДЕЙСТВИЙ ASTRA (aam-w-br) */
+    .aam-quick-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .aam-wbtn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      position: relative;
+    }
+    .aam-wbtn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+    .aam-wbtn__badge {
+      background: var(--pink);
+      color: #111;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+    }
+
+    /* БОКОВАЯ ИСТОРИЯ ДИАЛОГОВ (aam-conv) И ЧАТ (aam-chat) */
+    .chat-deck-container {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 18px;
+      min-height: 440px;
+    }
+    @media (max-width: 820px) {
+      .chat-deck-container { grid-template-columns: 1fr; }
+      .aam-conv { display: none; }
+    }
+
+    .aam-conv {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .aam-conv__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-muted);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .aam-conv__list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      max-height: 380px;
+    }
+    .aam-conv__item {
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--color-text);
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .aam-conv__item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--card-border);
+    }
+    .aam-conv__item-time {
+      font-size: 10px;
+      color: var(--color-text-dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* СТИЛИ ЧАТА ASTRA (aam-chat) */
+    .aam-chat {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 440px;
+    }
+    .aam-chat__header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10, 10, 14, 0.4);
+    }
+    .aam-chat__title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .aam-chat__messages {
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 380px;
+    }
+
+    .chat-bubble {
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13.5px;
+      line-height: 1.5;
+      position: relative;
+      word-break: break-word;
+    }
+    .chat-bubble--user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(203, 166, 247, 0.22), rgba(137, 180, 250, 0.18));
+      border: 1px solid rgba(203, 166, 247, 0.3);
+      color: #fff;
+    }
+    .chat-bubble--asst {
+      align-self: flex-start;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid var(--card-border);
+      color: var(--color-text);
+    }
+    .chat-bubble--asst .emotion-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* РЕЖИМ ИИ-АГЕНТА (Терминал вызова тулов как на knice.tech) */
+    .agent-trace {
+      background: rgba(10, 10, 14, 0.85);
+      border: 1px solid rgba(137, 180, 250, 0.25);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .agent-trace__thought { color: var(--color-text-muted); }
+    .agent-trace__tool { color: var(--cyan); display: flex; align-items: center; gap: 6px; }
+    .agent-trace__result { color: var(--green); display: flex; align-items: center; gap: 6px; }
+
+    /* КОМПОУЗЕР ВВОДА ЧАТА (aam-composer) */
+    .aam-chat__footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--card-border);
+      background: rgba(10, 10, 14, 0.5);
+    }
+    .aam-input-shell {
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 4px 8px;
+      gap: 8px;
+      transition: var(--transition);
+    }
+    .aam-input-shell:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
+    textarea.aam-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 13.5px;
+      font-family: inherit;
+      resize: none;
+      outline: none;
+      max-height: 100px;
+      padding: 6px 4px;
+    }
+    textarea.aam-input::placeholder { color: var(--color-text-dim); }
+    .aam-cbtn {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      border: none;
+      color: var(--color-text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .aam-cbtn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    .aam-cbtn.recording {
+      color: var(--pink);
+      background: rgba(243, 139, 168, 0.15);
+      animation: pulse 1.2s infinite;
+    }
+    .aam-send {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: var(--primary);
+      border: none;
+      color: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .aam-send:hover { background: var(--primary-hover); transform: scale(1.05); }
+
+    /* === ВКЛАДКА 2: ВИЗУАЛЬНЫЙ РЕДАКТОР КОМАНД (ASTRA COMMAND EDITOR) === */
+    .editor-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 18px;
+      height: 680px;
+    }
+    @media (max-width: 860px) {
+      .editor-layout { grid-template-columns: 1fr; height: auto; }
+    }
+
+    .editor-sidebar {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+    .editor-sidebar__title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .command-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .command-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .command-card:hover, .command-card.active {
+      background: rgba(203, 166, 247, 0.08);
+      border-color: rgba(203, 166, 247, 0.35);
+    }
+    .command-card__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .command-card__meta {
+      font-size: 11px;
+      color: var(--color-text-dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ХОЛСТ РЕДАКТОРА С СЕТКОЙ И УЗЛАМИ */
+    .editor-canvas-wrap {
+      background: rgba(11, 11, 15, 0.95);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .editor-toolbar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(14, 14, 18, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      z-index: 5;
+    }
+    .editor-canvas {
+      flex: 1;
+      position: relative;
+      min-height: 580px;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+      overflow: auto;
+    }
+    svg.wire-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+    path.wire-path {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.35);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      transition: stroke 0.3s;
+    }
+    path.wire-pulse {
+      fill: none;
+      stroke: var(--primary);
+      stroke-width: 3.5;
+      stroke-dasharray: 8 16;
+      animation: wireDash 1.6s linear infinite;
+    }
+    @keyframes wireDash { to { stroke-dashoffset: -48; } }
+
+    /* УЗЕЛ (NODE CARD) В РЕДАКТОРЕ */
+    .graph-node {
+      position: absolute;
+      width: 220px;
+      background: rgba(18, 18, 26, 0.92);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      cursor: grab;
+      z-index: 3;
+      user-select: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .graph-node:active { cursor: grabbing; }
+    .graph-node.active-executing {
+      border-color: var(--primary);
+      box-shadow: 0 0 25px var(--primary-glow);
+    }
+    .graph-node__head {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .node-type-trigger { color: var(--yellow); border-top: 2px solid var(--yellow); }
+    .node-type-condition { color: var(--cyan); border-top: 2px solid var(--cyan); }
+    .node-type-action { color: var(--primary); border-top: 2px solid var(--primary); }
+    .node-type-notification { color: var(--green); border-top: 2px solid var(--green); }
+
+    .graph-node__body {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .graph-node__title { font-size: 13px; font-weight: 600; color: #fff; }
+    .graph-node__val {
+      font-size: 11px;
+      color: var(--color-text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px 6px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    /* === ВКЛАДКА 3: 3D И 2D АВАТАР (МОДЕЛЬ) === */
+    .avatar-tab-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 20px;
+      min-height: 600px;
+    }
+    @media (max-width: 860px) {
+      .avatar-tab-grid { grid-template-columns: 1fr; }
+    }
+    .avatar-viewport-card {
+      background: #08080c;
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 520px;
+    }
+    #three-avatar-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      inset: 0;
+    }
+    .avatar-controls-card {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .emotion-buttons-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+    }
+    .btn-emotion {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      color: var(--color-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-emotion:hover, .btn-emotion.active {
+      background: rgba(203, 166, 247, 0.15);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* МАСКОТ В УГЛУ ЭКРАНА ASTRA (aam-mascot) */
+    .aam-corner-mascot {
+      position: fixed;
+      bottom: 24px;
+      right: 28px;
+      z-index: 99;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.25s;
+    }
+    .aam-corner-mascot:hover { transform: scale(1.08); }
+    .mascot-bubble {
+      background: rgba(18, 18, 24, 0.92);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 5px 10px;
+      font-size: 11px;
+      color: #fff;
+      margin-bottom: 6px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      animation: floatBubble 3s infinite ease-in-out;
+    }
+    @keyframes floatBubble { 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-4px); } }
+    .mascot-avatar-circle {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #f38ba8 20%, #cba6f7 70%);
+      box-shadow: 0 0 20px var(--primary-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      border: 2px solid #fff;
+    }
+    /* === ФАЙЛОВЫЙ ПРОВОДНИК ПК (ASTRA FILE EXPLORER) === */
+    .files-container {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .files-quick-drives {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .quick-drive-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      color: var(--color-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+      user-select: none;
+    }
+    .quick-drive-btn:hover {
+      background: rgba(203, 166, 247, 0.16);
+      border-color: var(--primary);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .quick-drive-btn.active {
+      background: linear-gradient(135deg, rgba(203, 166, 247, 0.28), rgba(137, 180, 250, 0.2));
+      border-color: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+    .files-nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(14, 14, 20, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      flex-wrap: wrap;
+    }
+    .files-path-input {
+      flex: 1;
+      min-width: 200px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 6px 12px;
+      outline: none;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      transition: var(--transition);
+    }
+    .files-path-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
+    .files-search-input {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      color: #fff;
+      font-size: 12px;
+      outline: none;
+      min-width: 150px;
+    }
+    .files-search-input:focus {
+      border-color: var(--primary);
+    }
+    .files-breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 2px 4px;
+      color: var(--color-text-dim);
+    }
+    .crumb-item {
+      cursor: pointer;
+      color: var(--cyan);
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: var(--transition);
+    }
+    .crumb-item:hover {
+      background: rgba(137, 180, 250, 0.15);
+      color: #fff;
+    }
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 10px;
+      max-height: 540px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .file-card {
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: var(--transition);
+      cursor: pointer;
+      user-select: none;
+    }
+    .file-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(203, 166, 247, 0.4);
+      transform: translateY(-1px);
+    }
+    .file-card__icon {
+      font-size: 22px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px;
+    }
+    .file-card__details {
+      flex: 1;
+      min-width: 0;
+    }
+    .file-card__name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-card__meta {
+      font-size: 11px;
+      color: var(--color-text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 2px;
+    }
+    .file-card__actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .file-act-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--color-text);
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .file-act-btn:hover {
+      background: rgba(203, 166, 247, 0.22);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    /* === ANDROID CONNECT (ПУЛЬТ ДЛЯ ТЕЛЕФОНА) === */
+    .remote-pad-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .remote-tile-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      user-select: none;
+    }
+    .remote-tile-btn svg { width: 22px; height: 22px; stroke: var(--primary); }
+    .remote-tile-btn:active {
+      transform: scale(0.96);
+      background: rgba(203, 166, 247, 0.15);
+      border-color: var(--primary);
+    }
+
+    /* МОБИЛЬНЫЙ РЕЖИМ (PWA) */
+    @media (max-width: 768px) {
+      .app-viewport { padding: 0 8px; margin: 4px auto 80px; }
+      .aam-window { border-radius: 12px; min-height: 94vh; }
+      .aam-titlebar { padding: 8px 12px; }
+      .aam-content { padding: 14px 12px; }
+      .aam-corner-mascot { display: none; }
+      
+      /* Фиксированная нижняя панель на мобильных */
+      .mobile-bottom-nav {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(10, 10, 14, 0.95);
+        backdrop-filter: blur(20px);
+        border-top: 1px solid var(--card-border);
+        z-index: 100;
+        padding: 6px 10px calc(env(safe-area-inset-bottom, 10px) + 6px);
+        justify-content: space-around;
+      }
+      .mobile-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        font-size: 10px;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        padding: 4px 8px;
+      }
+      .mobile-nav-item.active { color: var(--primary); font-weight: 600; }
+    }
+    .mobile-bottom-nav { display: none; }
+
+    /* ============================================================
+       ASTRA CUSTOM MODAL (КРАСИВЫЕ ДИАЛОГОВЫЕ ОКНА МИИ ВМЕСТО GOOGLE)
+       ============================================================ */
+    .mia-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 8, 14, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+      padding: 16px;
+    }
+    .mia-modal-backdrop.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .mia-modal-box {
+      position: relative;
+      background: rgba(18, 18, 26, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 
+        0 24px 60px rgba(0, 0, 0, 0.8),
+        0 0 40px rgba(243, 139, 168, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      transform: scale(0.9) translateY(16px);
+      transition: transform 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .mia-modal-backdrop.show .mia-modal-box {
+      transform: scale(1) translateY(0);
+    }
+
+    .mia-modal-box.danger {
+      border-color: rgba(243, 139, 168, 0.38);
+      box-shadow: 
+        0 24px 60px rgba(0, 0, 0, 0.8),
+        0 0 50px rgba(243, 139, 168, 0.22),
+        inset 0 1px 0 rgba(243, 139, 168, 0.25);
+    }
+
+    .mia-modal-box.primary {
+      border-color: rgba(203, 166, 247, 0.38);
+      box-shadow: 
+        0 24px 60px rgba(0, 0, 0, 0.8),
+        0 0 50px rgba(203, 166, 247, 0.22),
+        inset 0 1px 0 rgba(203, 166, 247, 0.25);
+    }
+
+    .mia-modal-glow {
+      position: absolute;
+      top: -70px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 240px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(243, 139, 168, 0.35) 0%, transparent 70%);
+      pointer-events: none;
+      filter: blur(28px);
+      transition: background 0.3s ease;
+    }
+    .mia-modal-box.primary .mia-modal-glow {
+      background: radial-gradient(circle, rgba(203, 166, 247, 0.35) 0%, transparent 70%);
+    }
+
+    .mia-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 22px 24px 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .mia-modal-badge {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .mia-modal-badge.danger {
+      background: rgba(243, 139, 168, 0.14);
+      border: 1px solid rgba(243, 139, 168, 0.45);
+      color: #f38ba8;
+      box-shadow: 0 0 20px rgba(243, 139, 168, 0.25);
+      animation: miaBadgePulse 2.4s infinite ease-in-out;
+    }
+    .mia-modal-badge.primary {
+      background: rgba(203, 166, 247, 0.14);
+      border: 1px solid rgba(203, 166, 247, 0.45);
+      color: #cba6f7;
+      box-shadow: 0 0 20px rgba(203, 166, 247, 0.25);
+    }
+
+    @keyframes miaBadgePulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 16px rgba(243, 139, 168, 0.2); }
+      50% { transform: scale(1.06); box-shadow: 0 0 24px rgba(243, 139, 168, 0.45); }
+    }
+
+    .mia-modal-title-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+    .mia-modal-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+    }
+    .mia-modal-subtitle {
+      font-size: 11px;
+      color: var(--color-text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: block;
+      margin-top: 2px;
+    }
+
+    .mia-modal-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      transition: var(--transition);
+    }
+    .mia-modal-close:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      transform: scale(1.06);
+    }
+
+    .mia-modal-body {
+      padding: 4px 24px 20px;
+      color: var(--color-text);
+      font-size: 13.5px;
+      line-height: 1.55;
+      position: relative;
+      z-index: 1;
+    }
+    .mia-modal-body p {
+      margin: 0;
+      color: #d1d5db;
+    }
+
+    .mia-modal-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      outline: none;
+      font-family: inherit;
+      font-size: 13.5px;
+      transition: var(--transition);
+      box-sizing: border-box;
+    }
+    .mia-modal-input:focus {
+      border-color: var(--primary);
+      background: rgba(255, 255, 255, 0.09);
+      box-shadow: 0 0 14px var(--primary-glow);
+    }
+
+    .mia-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 24px 20px;
+      background: rgba(0, 0, 0, 0.22);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      position: relative;
+      z-index: 1;
+    }
+
+    .mia-modal-btn {
+      padding: 9px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+      border: none;
+      outline: none;
+      font-family: inherit;
+    }
+    .mia-modal-btn-cancel {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--color-text-muted);
+    }
+    .mia-modal-btn-cancel:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+    .mia-modal-btn-danger {
+      background: linear-gradient(135deg, #f38ba8 0%, #e06c75 100%);
+      color: #11111b;
+      box-shadow: 0 4px 16px rgba(243, 139, 168, 0.35);
+    }
+    .mia-modal-btn-danger:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(243, 139, 168, 0.5);
+      filter: brightness(1.08);
+    }
+    .mia-modal-btn-primary {
+      background: linear-gradient(135deg, #cba6f7 0%, #89b4fa 100%);
+      color: #11111b;
+      box-shadow: 0 4px 16px rgba(203, 166, 247, 0.35);
+    }
+    .mia-modal-btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(203, 166, 247, 0.5);
+      filter: brightness(1.08);
+    }
+  </style>
+</head>
+<body>
+  <!-- Фоновые неоновые сферы Astra -->
+  <div class="ambient-glow">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+  </div>
+
+  <div class="app-viewport">
+    <div class="aam-window">
+      <!-- ТАЙТЛБАР ASTRA -->
+      <header class="aam-titlebar">
+        <div class="aam-traffic">
+          <span class="aam-traffic__dot dot-close" title="Закрыть" onclick="sendRemote('minimize')"></span>
+          <span class="aam-traffic__dot dot-min" title="Свернуть" onclick="sendRemote('minimize')"></span>
+          <span class="aam-traffic__dot dot-max" title="Развернуть" onclick="toggleFullscreen()"></span>
+        </div>
+        <div class="aam-titlebar__title">
+          <span>Astra · Мия</span>
+          <span class="brand-spark">✦</span>
+          <span style="font-size: 11px; opacity: 0.6;">JARVIS EDITION</span>
+        </div>
+        <div class="aam-titlebar__actions">
+          <div class="badge-status">
+            <span class="dot-pulse"></span>
+            <span id="header-status-text">ОНЛАЙН</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- НАВИГАЦИОННЫЕ ВКЛАДКИ ASTRA -->
+      <nav class="aam-tabs">
+        <span class="aam-tab active" data-tab="home" onclick="switchTab('home')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          Главная
+        </span>
+        <span class="aam-tab" data-tab="commands" onclick="switchTab('commands')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          Команды
+        </span>
+        <span class="aam-tab" data-tab="ai" onclick="switchTab('ai')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line></svg>
+          ИИ
+        </span>
+        <span class="aam-tab" data-tab="voice" onclick="switchTab('voice')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+          Голос
+        </span>
+        <span class="aam-tab" data-tab="avatar" onclick="switchTab('avatar')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+          Модель (3D)
+        </span>
+        <span class="aam-tab" data-tab="files" onclick="switchTab('files')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Файлы (ПК)
+        </span>
+        <span class="aam-tab" data-tab="settings" onclick="switchTab('settings')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          Настройки
+        </span>
+      </nav>
+
+      <!-- КОНТЕНТ ВКЛАДОК -->
+      <main class="aam-content">
+
+        <!-- === 1. ГЛАВНАЯ (ДАШБОРД ASTRA) === -->
+        <section id="pane-home" class="tab-pane active">
+          <div class="aam-home-top">
+            <div>
+              <h1 class="aam-brand-title">Мия <span class="star">✦</span></h1>
+              <p class="aam-subtitle">Ваш голосовой ИИ-компаньон на рабочем столе</p>
+            </div>
+            <div class="aam-actions">
+              <button class="aam-btn" onclick="document.getElementById('chat-input').focus()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                Чат
+              </button>
+              <button class="aam-btn aam-btn--launch" id="btn-voice-trigger" onclick="toggleVoiceInput()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                Слушать
+              </button>
+            </div>
+          </div>
+
+          <!-- СЕТКА ВИДЖЕТОВ ASTRA -->
+          <div class="aam-grid">
+            <!-- ЛЕВАЯ КОЛОНКА: МЕДИАПЛЕЕР И ПОГОДА/ВАЛЮТА -->
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <!-- ПЛЕЕР ASTRA -->
+              <div class="glass-tile aam-music">
+                <div class="aam-music__top">
+                  <div class="aam-music__cover">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M9 17.5a2.5 2.5 0 1 1-2.5-2.5c.55 0 1.06.18 1.5.46V5l10-2v9.5a2.5 2.5 0 1 1-2.5-2.5c.55 0 1.06.18 1.5.46V6L9 7.5z"></path></svg>
+                  </div>
+                  <div class="aam-music__info">
+                    <div class="aam-music__title" id="music-title">Моя Волна · Яндекс Музыка</div>
+                    <div class="aam-music__artist" id="music-artist">Персональный поток рекомендаций</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px;">
+                  <select id="media-player-target" class="mia-modal-input" aria-label="Медиа-плеер" onchange="refreshMediaPlayers()" style="flex:1;padding:7px 10px;font-size:12px;">
+                    <option value="auto">Авто · активный плеер</option>
+                    <option value="yandex">Яндекс Музыка</option>
+                    <option value="spotify">Spotify</option>
+                    <option value="aimp">AIMP</option>
+                    <option value="foobar">foobar2000</option>
+                    <option value="browser">Браузерная вкладка</option>
+                  </select>
+                  <button class="aam-ctrl-btn" title="Открыть выбранный плеер" onclick="sendRemote('open_player')">↗</button>
+                </div>
+                <div id="media-player-status" style="font-size:11px;color:var(--color-text-muted);min-height:14px;margin-bottom:5px;">Статус плееров загружается…</div>
+                <div class="aam-music__progress">
+                  <span id="music-time-curr">1:24</span>
+                  <div class="aam-music__track" onclick="sendRemote('play_pause')">
+                    <div class="aam-music__track-fill" id="music-bar-fill"></div>
+                    <div class="aam-music__track-thumb" id="music-bar-thumb"></div>
+                  </div>
+                  <span id="music-time-total">3:40</span>
+                </div>
+                <div class="aam-music__controls">
+                  <button class="aam-ctrl-btn" title="Предыдущий" onclick="sendRemote('prev_track')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20" fill="currentColor"></polygon><line x1="6" y1="5" x2="6" y2="19"></line></svg>
+                  </button>
+                  <button class="aam-ctrl-btn aam-ctrl-btn--play" title="Воспроизведение / Пауза" onclick="sendRemote('play_pause')">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                  </button>
+                  <button class="aam-ctrl-btn" title="Следующий трек" onclick="sendRemote('next_track')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor"></polygon><line x1="18" y1="5" x2="18" y2="19"></line></svg>
+                  </button>
+                  <button class="aam-ctrl-btn" title="Включить Мою Волну" onclick="sendRemote('wave')">
+                    🌊
+                  </button>
+                </div>
+              </div>
+
+              <!-- ПОГОДА И ВАЛЮТА -->
+              <div class="weather-currency-row">
+                <div class="glass-tile aam-weather">
+                  <span class="aam-weather__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>
+                  </span>
+                  <div>
+                    <div class="aam-weather__temp" id="weather-temp">+18°</div>
+                    <div class="aam-weather__desc" id="weather-desc">Ясно · Москва</div>
+                  </div>
+                </div>
+
+                <div class="glass-tile aam-currency">
+                  <div class="aam-currency__symbol">$</div>
+                  <div>
+                    <div class="aam-currency__pair">USD / RUB</div>
+                    <div style="display: flex; align-items: baseline;">
+                      <span class="aam-currency__rate" id="curr-rate">92.40 ₽</span>
+                      <span class="aam-currency__change--up">▲ 0.42%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ПРАВАЯ КОЛОНКА: СИСТЕМА И БЫСТРЫЕ ДЕЙСТВИЯ -->
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div class="glass-tile aam-system">
+                <div class="aam-sys-item">
+                  <div class="aam-sys-item__head">
+                    <span class="aam-sys-item__label">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"></path></svg>
+                      CPU (Процессор)
+                    </span>
+                    <span class="aam-sys-item__value" id="sys-cpu-val">24%</span>
+                  </div>
+                  <div class="aam-bar"><div class="aam-bar__fill fill-cpu" id="sys-cpu-bar" style="width: 24%"></div></div>
+                </div>
+
+                <div class="aam-sys-item">
+                  <div class="aam-sys-item__head">
+                    <span class="aam-sys-item__label">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 19v2M10 19v2M14 19v2M18 19v2"></path><rect x="6" y="3" width="12" height="16" rx="2"></rect></svg>
+                      RAM (Оперативная память)
+                    </span>
+                    <span class="aam-sys-item__value" id="sys-ram-val">48% · 7.6 GB</span>
+                  </div>
+                  <div class="aam-bar"><div class="aam-bar__fill fill-ram" id="sys-ram-bar" style="width: 48%"></div></div>
+                </div>
+
+                <div class="aam-sys-item">
+                  <div class="aam-sys-item__head">
+                    <span class="aam-sys-item__label">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="6" y1="12" x2="10" y2="12"></line></svg>
+                      Диск C / D
+                    </span>
+                    <span class="aam-sys-item__value" id="sys-disk-val">Свободно 120 GB</span>
+                  </div>
+                  <div class="aam-bar"><div class="aam-bar__fill fill-gpu" id="sys-disk-bar" style="width: 35%"></div></div>
+                </div>
+              </div>
+
+              <!-- КНОПКИ БЫСТРЫХ ДЕЙСТВИЙ ASTRA -->
+              <div class="aam-quick-bar">
+                <button class="aam-wbtn" onclick="quickTaskAction('Задачи')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 20 6"></polyline><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"></path></svg>
+                  Задачи <span class="aam-wbtn__badge">3</span>
+                </button>
+                <button class="aam-wbtn" onclick="quickTaskAction('Заметки')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="14 3 14 9 20 9"></polyline></svg>
+                  Заметки
+                </button>
+                <button class="aam-wbtn" onclick="sendRemote('screenshot')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                  Скриншот
+                </button>
+                <button class="aam-wbtn" onclick="sendRemote('lock')">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                  Блок ПК
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- КАРТА ASTRA GEO (MapLibre GL) -->
+          <div class="glass-tile aam-map-card" style="margin-top: 14px; margin-bottom: 14px; padding: 14px; border-radius: 16px; background: rgba(18, 18, 24, 0.75); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(0, 240, 255, 0.12); display: flex; align-items: center; justify-content: center; color: #00f0ff;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 14px; color: #f3f4f6; display: flex; align-items: center; gap: 8px;">
+                    Геонавигация Astra
+                    <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 10px; background: rgba(166, 227, 161, 0.15); color: #a6e3a1; border: 1px solid rgba(166, 227, 161, 0.3);">MapLibre GL</span>
+                  </div>
+                  <div style="font-size: 11px; color: #9ca3af;" id="map-sub-status">Интерактивная карта и метеостанция</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input id="map-search-input" type="text" placeholder="Поиск города, адреса..." style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 12px; outline: none; width: 190px;" onkeydown="if(event.key==='Enter') searchMapLocation()">
+                <button class="aam-wbtn" style="padding: 6px 12px; font-size: 12px;" onclick="searchMapLocation()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  Найти
+                </button>
+
+              </div>
+            </div>
+            <div id="astra-map" style="width: 100%; height: 280px; border-radius: 12px; overflow: hidden; background: #0c0f17; border: 1px solid rgba(255,255,255,0.06); position: relative;"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; color: #9ca3af; flex-wrap: wrap; gap: 6px;">
+              <span id="map-coords-label">📍 Координаты: 55.7558, 37.6173 (Москва)</span>
+              <span id="map-weather-mini" style="color: #89b4fa; font-weight: 500;">🌡️ Получение погоды...</span>
+            </div>
+          </div>
+
+          <!-- ЧАТ И ИСТОРИЯ ASTRA -->
+          <div class="chat-deck-container">
+            <!-- БОКОВАЯ ИСТОРИЯ -->
+            <div class="aam-conv">
+              <div class="aam-conv__header">
+                <span>История запросов</span>
+                <button class="aam-cbtn" title="Новый диалог" onclick="clearChat()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+              </div>
+              <div class="aam-conv__list" id="conv-list">
+                <button class="aam-conv__item" onclick="sendPresetMessage('Открой YouTube и включи lo-fi')">
+                  <span>Открой YouTube и включи lo-fi</span>
+                  <span class="aam-conv__item-time">только что</span>
+                </button>
+                <button class="aam-conv__item" onclick="sendPresetMessage('Включи мою волну')">
+                  <span>Включи мою волну в Яндекс Музыке</span>
+                  <span class="aam-conv__item-time">10 мин назад</span>
+                </button>
+                <button class="aam-conv__item" onclick="sendPresetMessage('Как работает мой процессор и память?')">
+                  <span>Как работает мой процессор и память?</span>
+                  <span class="aam-conv__item-time">1 ч назад</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- ИНТЕРАКТИВНЫЙ ЧАТ -->
+            <div class="aam-chat">
+              <div class="aam-chat__header">
+                <span class="aam-chat__title">
+                  <span class="brand-spark">✦</span>
+                  Диалог с Мией
+                </span>
+                <div style="display: flex; gap: 8px;">
+                  <button class="aam-cbtn" title="Очистить экран" onclick="clearChat()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="aam-chat__messages" id="chat-messages">
+                <div class="chat-bubble chat-bubble--asst">
+                  <div class="emotion-badge">[РАДОСТЬ]</div>
+                  Привет! Я твоя цифровая напарница Мия. Слушаю микрофон ПК, управляю компьютером, включаю музыку и готова помочь с любыми задачами. Чем займёмся?
+                </div>
+              </div>
+
+              <div class="aam-chat__footer">
+                <div class="aam-input-shell">
+                  <button class="aam-cbtn" id="mic-btn" title="Голосовой ввод" onclick="toggleVoiceInput()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                  </button>
+                  <textarea class="aam-input" id="chat-input" rows="1" placeholder="Сообщение для Мии… (Enter для отправки)" onkeydown="handleInputKey(event)"></textarea>
+                  <button class="aam-send" title="Отправить" onclick="sendMessage()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="6 11 12 5 18 11"></polyline></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 2. ВИЗУАЛЬНЫЙ РЕДАКТОР КОМАНД (ASTRA COMMAND EDITOR) === -->
+        <section id="pane-commands" class="tab-pane">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700; color: #fff;">Визуальный редактор команд</h2>
+              <p style="font-size: 13px; color: var(--color-text-muted);">Создавайте сложные цепочки автоматизации с триггерами, условиями и действиями без кода</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="aam-btn" onclick="addNewNodeModal()">+ Узел</button>
+              <button class="aam-btn" onclick="autoLayoutNodes()">Автораскладка</button>
+              <button class="aam-btn aam-btn--launch" onclick="runCurrentVisualFlow()">
+                ▶ Запустить команду
+              </button>
+              <button class="aam-btn" onclick="saveCurrentVisualFlow()">💾 Сохранить</button>
+              <button class="aam-btn" style="background: rgba(243,139,168,0.15); color: #f38ba8; border: 1px solid rgba(243,139,168,0.3);" onclick="deleteCurrentVisualFlow()" title="Удалить текущую команду">🗑️ Удалить</button>
+            </div>
+          </div>
+
+          <div class="editor-layout">
+            <!-- СПИСОК КОМАНД СЛЕВА -->
+            <div class="editor-sidebar">
+              <div class="editor-sidebar__title">
+                <span>Ваши команды</span>
+                <span class="aam-wbtn__badge" id="commands-count">4</span>
+              </div>
+              <div class="command-list" id="command-list-container">
+                <!-- Заполняется динамически -->
+              </div>
+              <button class="aam-btn" style="width: 100%; margin-top: auto;" onclick="createNewVisualFlow()">
+                + Создать команду
+              </button>
+            </div>
+
+            <!-- ИНТЕРАКТИВНЫЙ ХОЛСТ С УЗЛАМИ И ПРОВОДАМИ -->
+            <div class="editor-canvas-wrap">
+              <div class="editor-toolbar">
+                <span style="font-size: 13px; font-weight: 600; color: #fff;" id="canvas-flow-title">Открыть YouTube и включить lo-fi</span>
+                <span style="font-size: 11px; color: var(--color-text-muted); font-family: 'JetBrains Mono', monospace;" id="canvas-flow-meta">3 узла · 2 связи</span>
+              </div>
+              <div class="editor-canvas" id="node-canvas">
+                <svg class="wire-layer" id="wire-svg"></svg>
+                <!-- Узлы рендерятся сюда -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 3. МОДЕЛЬ (3D И 2D АВАТАР) === -->
+        <section id="pane-avatar" class="tab-pane">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 700; color: #fff;">Виртуальная 3D / 2D Модель</h2>
+            <p style="font-size: 13px; color: var(--color-text-muted);">Интерактивный персонаж следит за курсором, дышит, моргает и синхронизирует мимику с речью Мии</p>
+          </div>
+
+          <div class="avatar-tab-grid">
+            <!-- 3D / SKETCHFAB / THREE.JS VIEWPORT -->
+            <div class="avatar-viewport-card" style="position: relative; overflow: hidden; min-height: 520px; border-radius: 16px; background: rgba(14, 14, 20, 0.85);">
+              <!-- 1. Встроенная интерактивная 3D модель: Юно Гасай (Mirai Nikki) со Sketchfab -->
+              <div id="yuno-sketchfab-container" class="sketchfab-embed-wrapper" style="width: 100%; height: 100%; position: absolute; inset: 0; z-index: 5;">
+                <iframe id="yuno-gasai-frame" title="Yuno Gasai - Mirai Nikki" frameborder="0" allowfullscreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking execution-while-out-of-viewport execution-while-not-rendered web-share src="https://sketchfab.com/models/7c80549a4e094165acaf80c09d81c964/embed?autostart=1&preload=1&ui_theme=dark&ui_infos=0&ui_watermark=0&ui_hint=0" style="width: 100%; height: 100%; border: none; border-radius: 16px;"></iframe>
+              </div>
+
+              <!-- 2. Three.js WebGL (Кибер-Мия процедурная / Своя загруженная 3D модель .glb) -->
+              <div id="three-avatar-container" style="width: 100%; height: 100%; position: absolute; inset: 0; z-index: 3; display: none;"></div>
+
+              <!-- 3. 2D Аватар -->
+              <div id="two-avatar-container" style="width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; inset: 0; z-index: 4; pointer-events: none;">
+                <img id="full-mascot-img" src="/static/mascot.png" alt="Mascot" style="max-height: 85%; max-width: 85%; object-fit: contain; filter: drop-shadow(0 0 35px rgba(203, 166, 247, 0.5)); border-radius: 16px;">
+              </div>
+
+              <!-- Нижние бейджи и кнопки управления вьюпортом -->
+              <div style="position: absolute; bottom: 14px; left: 14px; display: flex; align-items: center; gap: 8px; z-index: 10; pointer-events: auto;">
+                <span id="active-mascot-badge" style="background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; color: #f38ba8; border: 1px solid rgba(243, 139, 168, 0.35);">🌸 Юно Гасай (3D)</span>
+                <button class="aam-btn" onclick="testLipSync()" style="font-size: 11px; padding: 5px 12px;">Тест речи и звука</button>
+              </div>
+            </div>
+
+            <!-- ПАНЕЛЬ УПРАВЛЕНИЯ ЭМОЦИЯМИ И ВЫБОРА МОДЕЛЕЙ -->
+            <div class="avatar-controls-card">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Выбор 3D / 2D Модели</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 12px;">Выберите персонажа в качестве лица вашего ассистента:</p>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+                <button class="aam-btn active" id="btn-mode-yuno" onclick="switchMascotMode('yuno')" style="border-color: #f38ba8; color: #f38ba8; font-weight: 600;">🌸 Юно Гасай (3D)</button>
+                <button class="aam-btn" id="btn-mode-mia3d" onclick="switchMascotMode('mia3d')">⚡ Кибер-Мия (3D)</button>
+                <button class="aam-btn" id="btn-mode-custom3d" onclick="switchMascotMode('custom3d')">📦 Своя 3D (.glb)</button>
+                <button class="aam-btn" id="btn-mode-2d" onclick="switchMascotMode('2d')">🖼️ 2D Аватар</button>
+              </div>
+
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff; margin-top: 14px;">Эмоции и Мимика</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted);">Быстрая смена настроения персонажа:</p>
+              
+              <div class="emotion-buttons-grid">
+                <button class="btn-emotion active" onclick="setAvatarEmotion('СПОКОЙСТВИЕ')">Спокойствие</button>
+                <button class="btn-emotion" onclick="setAvatarEmotion('РАДОСТЬ')">Радость</button>
+                <button class="btn-emotion" onclick="setAvatarEmotion('СМЕХ')">Смех</button>
+                <button class="btn-emotion" onclick="setAvatarEmotion('СМУЩЕНИЕ')">Смущение</button>
+                <button class="btn-emotion" onclick="setAvatarEmotion('УДИВЛЕНИЕ')">Удивление</button>
+                <button class="btn-emotion" onclick="setAvatarEmotion('ЗАДУМЧИВОСТЬ')">Задумчивость</button>
+              </div>
+
+              <div style="margin-top: 14px; border-top: 1px solid var(--card-border); padding-top: 14px;">
+                <h4 style="font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 6px;">🎨 Загрузка своего маскота</h4>
+                <p style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 10px;">Загрузите .glb модель или изображение:</p>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <label class="aam-btn" style="cursor: pointer; text-align: center; display: block;">
+                    📦 Загрузить файл 3D модели (.glb / .gltf)
+                    <input type="file" id="input-upload-3d" accept=".glb,.gltf" style="display: none;" onchange="handleUpload3D(event)">
+                  </label>
+                  <label class="aam-btn" style="cursor: pointer; text-align: center; display: block;">
+                    🖼️ Загрузить свой 2D арт (.png / .gif / .jpg)
+                    <input type="file" id="input-upload-2d" accept="image/*" style="display: none;" onchange="handleUpload2D(event)">
+                  </label>
+                  <button class="aam-btn" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);" onclick="resetDefaultMascot()">🔄 Сбросить на стандартную Мию</button>
+                </div>
+              </div>
+
+              <div style="margin-top: 14px; border-top: 1px solid var(--card-border); padding-top: 14px;">
+                <h4 style="font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 6px;">Плавающий маскот</h4>
+                <p style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 10px;">Плавающий аватар в правом нижнем углу экрана.</p>
+                <button class="aam-btn" id="btn-toggle-corner-mascot" onclick="toggleCornerMascot()">Включить угол-маскот</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 4. ИИ (МОЗГ И МОДЕЛИ) === -->
+        <section id="pane-ai" class="tab-pane">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 700; color: #fff;">ИИ-Модели и Интеллект</h2>
+            <p style="font-size: 13px; color: var(--color-text-muted);">Локальные модели на вашей видеокарте и подключение мощного внешнего DeepSeek V4</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 12px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Локальный мозг (Ollama GPU)</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted);">Работает на вашей видеокарте GTX 1660 Super без интернета, без задержек и на 100% приватно.</p>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                <div><b>Модель:</b> <code style="color: var(--primary);">qwen2.5:3b-instruct</code></div>
+                <div><b>Скорость отклика:</b> 45-60 токенов/сек</div>
+                <div><b>Память GPU:</b> ~2.4 ГБ VRAM</div>
+              </div>
+            </div>
+
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 12px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Внешний эксперт (DeepSeek V4 Pro / Flash)</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted);">Для сложных научных задач, сложного кодинга и глубоких рассуждений.</p>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                <div><b>Провайдер:</b> Shanghai AI Lab (InternLM API)</div>
+                <div><b>Модели:</b> DeepSeek-V4-Flash / DeepSeek-V4-Pro</div>
+                <div><b>Лимит:</b> до 500 000 000 бесплатных токенов</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 5. ГОЛОС (TTS И МИКРОФОН) === -->
+        <section id="pane-voice" class="tab-pane">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 700; color: #fff;">Голос и Распознавание Речи</h2>
+            <p style="font-size: 13px; color: var(--color-text-muted);">Настройка тембра, скорости речи и порога чувствительности микрофона</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 14px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Голосовой движок (Silero TTS v4)</h3>
+              <div>
+                <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Выберите диктора:</label>
+                <select id="voice-select" onchange="changeVoiceSpeaker(this.value)" style="width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--card-border); color: #fff; padding: 8px 12px; border-radius: var(--radius-sm); outline: none; font-family: inherit;">
+                  <option value="baya">baya — Звонкий, живой и мелодичный (Рекомендуется)</option>
+                  <option value="kseniya">kseniya — Мягкий, спокойный и естественный</option>
+                  <option value="xenia">xenia — Чёткий и выразительный</option>
+                </select>
+              </div>
+
+              <button class="aam-btn" onclick="testCurrentVoice()">
+                🔊 Прослушать пример речи с нормализацией
+              </button>
+            </div>
+
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 14px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Микрофон ПК (Активация по имени)</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted);">
+                Микрофон слушает имя «Мия» в фоне. Адаптивный фильтр автоматически подстраивается под уровень шума.
+              </p>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                  <span>Порог чувствительности:</span>
+                  <span id="threshold-val" style="font-family: 'JetBrains Mono', monospace; color: var(--cyan);">0.0038</span>
+                </div>
+                <input type="range" min="0.002" max="0.015" step="0.0005" value="0.0038" style="width: 100%;" oninput="document.getElementById('threshold-val').innerText = this.value">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 6. НАСТРОЙКИ И ANDROID CONNECT === -->
+        <section id="pane-settings" class="tab-pane">
+          <div>
+            <h2 style="font-size: 20px; font-weight: 700; color: #fff;">Настройки и Мобильное Приложение</h2>
+            <p style="font-size: 13px; color: var(--color-text-muted);">Подключение Android-смартфона, пульт управления и Telegram-бот</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px;">
+            <!-- ПУЛЬТ ДЛЯ ТЕЛЕФОНА (MIA CONNECT) -->
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Мия Connect (Android / Пульт)</h3>
+                <span class="aam-wbtn__badge">PWA</span>
+              </div>
+              <p style="font-size: 12px; color: var(--color-text-muted);">
+                Откройте на телефоне по Wi-Fi адрес ниже или отсканируйте камерой, затем нажмите «Установить приложение» в браузере:
+              </p>
+              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--cyan); word-break: break-all;" id="android-url-display">
+                http://192.168.0.100:8000
+              </div>
+
+              <!-- КНОПКИ БЫСТРОГО ПУЛЬТА -->
+              <h4 style="font-size: 13px; font-weight: 600; color: #fff; margin-top: 6px;">Быстрый пульт ПК:</h4>
+              <div class="remote-pad-grid">
+                <button class="remote-tile-btn" onclick="sendRemote('wave')">
+                  <span>🌊</span>
+                  <span>Моя Волна</span>
+                </button>
+                <button class="remote-tile-btn" onclick="sendRemote('play_pause')">
+                  <span>⏯</span>
+                  <span>Play / Pause</span>
+                </button>
+                <button class="remote-tile-btn" onclick="sendRemote('vol_up')">
+                  <span>🔊</span>
+                  <span>Громкость +</span>
+                </button>
+                <button class="remote-tile-btn" onclick="sendRemote('vol_down')">
+                  <span>🔉</span>
+                  <span>Громкость -</span>
+                </button>
+                <button class="remote-tile-btn" onclick="sendRemote('screenshot')">
+                  <span>📸</span>
+                  <span>Скриншот</span>
+                </button>
+                <button class="remote-tile-btn" onclick="sendRemote('lock')">
+                  <span>🔒</span>
+                  <span>Блок ПК</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- ИНФОРМАЦИЯ О СИСТЕМЕ И УПРАВЛЕНИИ ВНЕ ДОМА -->
+            <div class="glass-tile" style="display: flex; flex-direction: column; gap: 14px;">
+              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">🌍 Управление ПК вне дома (Telegram)</h3>
+              <p style="font-size: 12px; color: var(--color-text-muted);">
+                Когда вы ушли из дома и отключились от домашнего Wi-Fi, используйте <b>Telegram-бота</b> со смартфона (работает через 4G/5G из любой точки мира):
+              </p>
+              <div style="font-size: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 8px;">
+                <div>⚡ <code>/jarvis</code> — полный пульт управления ПК с инлайн-кнопками</div>
+                <div>🎵 <code>/music</code> — включить Мою Волну, паузу, след. трек</div>
+                <div>📸 <code>/screen</code> — моментальный снимок экрана монитора</div>
+                <div>🎙️ <b>Голосовые</b> — говорите в микрофон Telegram, Мия выполняет</div>
+                <div>🔒 <code>/run lock_pc</code> — удаленно заблокировать компьютер</div>
+              </div>
+
+              <div style="margin-top: 6px; border-top: 1px solid var(--card-border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                <button class="aam-btn" style="width: 100%;" onclick="installPWA()">
+                  📲 Установить PWA на телефон (в домашней сети)
+                </button>
+                <a href="file:///D:/assistant/Mia.exe" class="aam-btn" style="text-align: center; text-decoration: none; background: rgba(137,180,250,0.15); color: #89b4fa; border: 1px solid rgba(137,180,250,0.3);">
+                  💻 Десктопное приложение: D:\assistant\Mia.exe
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- === 7. ФАЙЛОВЫЙ ПРОВОДНИК ПК === -->
+        <section id="pane-files" class="tab-pane">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700; color: #fff;">📁 Проводник файлов компьютера</h2>
+              <p style="font-size: 13px; color: var(--color-text-muted);">Удаленный доступ к дискам, быстрым папкам, скачивание файлов и архивация .ZIP, запуск на ПК</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="aam-btn" onclick="openCurrentFolderOnPC()" title="Открыть текущую папку в окне Windows Explorer на мониторе">🖥️ Открыть на ПК</button>
+              <button class="aam-btn" onclick="downloadCurrentFolderZip()" title="Скачать всю папку целиком как zip-архив">📦 Скачать папку (.ZIP)</button>
+              <button class="aam-btn" onclick="refreshFiles()" title="Обновить список">🔄 Обновить</button>
+            </div>
+          </div>
+
+          <div class="files-container">
+            <!-- БЫСТРЫЕ ДИСКИ И ПАПКИ -->
+            <div class="files-quick-drives" id="files-quick-bar">
+              <!-- Заполняется динамически -->
+            </div>
+
+            <!-- СТРОКА НАВИГАЦИИ И ПОИСКА -->
+            <div class="files-nav-bar">
+              <button class="aam-btn" onclick="goUpFolder()" id="files-btn-up" title="На уровень выше (Вверх)">⬆️ Вверх</button>
+              <input type="text" id="files-path-input" class="files-path-input" placeholder="C:\..." onkeydown="if(event.key==='Enter') navigateToCustomPath()">
+              <button class="aam-btn" onclick="navigateToCustomPath()">Перейти</button>
+              <input type="text" id="files-search-filter" class="files-search-input" placeholder="🔍 Фильтр файлов..." oninput="filterFilesList()">
+            </div>
+
+            <!-- ХЛЕБНЫЕ КРОШКИ -->
+            <div class="files-breadcrumbs" id="files-breadcrumbs">
+              <!-- Заполняется динамически -->
+            </div>
+
+            <!-- СЕТКА / СПИСОК ФАЙЛОВ И ПАПОК -->
+            <div class="files-grid" id="files-list-grid">
+              <!-- Заполняется динамически -->
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ПЛАВАЮЩИЙ УГОЛ-МАСКОТ ASTRA (aam-mascot) -->
+  <div class="aam-corner-mascot" id="corner-mascot" onclick="mascotClick()" title="Нажми на меня!">
+    <div class="mascot-bubble" id="mascot-bubble-text">Привет! Я тут ✦</div>
+    <div class="mascot-avatar-circle" style="overflow: hidden; padding: 0;">
+      <img id="corner-mascot-img" src="/static/mascot.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+    </div>
+  </div>
+
+  <!-- МОБИЛЬНАЯ НИЖНЯЯ НАВИГАЦИЯ ДЛЯ ANDROID -->
+  <nav class="mobile-bottom-nav">
+    <div class="mobile-nav-item active" data-tab="home" onclick="switchTab('home')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>Главная</span>
+    </div>
+    <div class="mobile-nav-item" data-tab="commands" onclick="switchTab('commands')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+      <span>Команды</span>
+    </div>
+    <div class="mobile-nav-item" data-tab="avatar" onclick="switchTab('avatar')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon></svg>
+      <span>3D Модель</span>
+    </div>
+    <div class="mobile-nav-item" data-tab="files" onclick="switchTab('files')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>Файлы</span>
+    </div>
+    <div class="mobile-nav-item" data-tab="settings" onclick="switchTab('settings')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle></svg>
+      <span>Пульт ПК</span>
+    </div>
+  </nav>
+
+  <!-- КРАСИВОЕ ДИАЛОГОВОЕ ОКНО ASTRA / MIA CUSTOM MODAL -->
+  <div id="mia-custom-modal" class="mia-modal-backdrop" style="display: none;" onclick="handleModalBackdropClick(event)">
+    <div class="mia-modal-box danger" role="dialog" aria-modal="true">
+      <div class="mia-modal-glow"></div>
+      <div class="mia-modal-header">
+        <div class="mia-modal-badge danger" id="mia-modal-badge">
+          <span id="mia-modal-icon">🗑️</span>
+        </div>
+        <div class="mia-modal-title-wrap">
+          <h3 class="mia-modal-title" id="mia-modal-title">Удалить команду?</h3>
+          <span class="mia-modal-subtitle" id="mia-modal-subtitle">Подтверждение действия</span>
+        </div>
+        <button class="mia-modal-close" onclick="closeMiaModal(false)" title="Закрыть (Esc)">✕</button>
+      </div>
+
+      <div class="mia-modal-body" id="mia-modal-body">
+        <p id="mia-modal-message">Вы уверены, что хотите удалить эту команду?</p>
+        <div id="mia-modal-input-wrap" style="display: none; margin-top: 14px;">
+          <input type="text" id="mia-modal-input" class="mia-modal-input" placeholder="" />
+        </div>
+      </div>
+
+      <div class="mia-modal-actions" id="mia-modal-actions">
+        <button class="mia-modal-btn mia-modal-btn-cancel" id="mia-modal-btn-cancel" onclick="closeMiaModal(false)">
+          Отмена
+        </button>
+        <button class="mia-modal-btn mia-modal-btn-danger" id="mia-modal-btn-confirm" onclick="closeMiaModal(true)">
+          🗑️ Да, удалить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ УЗЛА КОМАНДЫ (ASTRA NODE BUILDER) -->
+  <div id="mia-node-modal" class="mia-modal-backdrop" style="display: none;" onclick="handleNodeModalBackdropClick(event)">
+    <div class="mia-modal-box primary" style="max-width: 520px;" role="dialog" aria-modal="true">
+      <div class="mia-modal-glow"></div>
+      <div class="mia-modal-header">
+        <div class="mia-modal-badge primary">
+          <span>⚡</span>
+        </div>
+        <div class="mia-modal-title-wrap">
+          <h3 class="mia-modal-title">Добавить действие в команду</h3>
+          <span class="mia-modal-subtitle">Автоматизация Windows & Astra</span>
+        </div>
+        <button class="mia-modal-close" onclick="closeNodeModal()" title="Закрыть">✕</button>
+      </div>
+
+      <div class="mia-modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Тип действия:</label>
+          <select id="node-action-type" class="mia-modal-input" onchange="onNodeActionTypeChange()" style="cursor: pointer;">
+            <option value="open_app">💻 Запустить программу / игру на ПК (Steam, Photoshop, etc.)</option>
+            <option value="open_url">🌐 Открыть сайт в браузере (YouTube, VK, etc.)</option>
+            <option value="yandex_wave">🌊 Включить Мою Волну (Яндекс Музыка)</option>
+            <option value="media_control">⏯️ Управление музыкой (След. трек, Пауза, Стоп)</option>
+            <option value="volume">🔊 Громкость звука (+10%, -10%, Mute)</option>
+            <option value="speak">🗣️ Озвучить фразу голосом Мии</option>
+            <option value="screenshot">📸 Сделать скриншот экрана</option>
+            <option value="delay">⏱️ Задержка / Пауза (в секундах)</option>
+            <option value="minimize_all">🖥️ Свернуть все окна (Показать рабочий стол)</option>
+            <option value="lock_screen">🔒 Заблокировать компьютер</option>
+            <option value="powershell">⚡ Выполнить команду PowerShell</option>
+          </select>
+        </div>
+
+        <!-- Поле выбора установленного приложения -->
+        <div id="node-group-app">
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Выберите приложение или введите своё:</label>
+          <div style="display: flex; gap: 8px;">
+            <select id="node-app-select" class="mia-modal-input" style="flex: 1;" onchange="onAppSelectChange()">
+              <option value="">-- Загрузка найденных программ на ПК... --</option>
+            </select>
+            <button class="aam-btn" onclick="refreshInstalledApps()" title="Обновить список программ">🔄</button>
+          </div>
+          <input type="text" id="node-app-custom" class="mia-modal-input" placeholder="Или введите имя/команду: steam, notepad, calc, discord..." style="margin-top: 6px;" oninput="onCustomAppInput()">
+        </div>
+
+        <!-- Поле значения (URL / Текст / Команда) -->
+        <div id="node-group-value" style="display: none;">
+          <label id="node-val-label" style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Значение / Параметр:</label>
+          <input type="text" id="node-val-input" class="mia-modal-input" placeholder="https://...">
+        </div>
+
+        <!-- Поле выбора мультимедиа клавиши -->
+        <div id="node-group-media" style="display: none;">
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Команда плеера:</label>
+          <select id="node-media-select" class="mia-modal-input">
+            <option value="next">⏭️ Следующий трек (FN+F6)</option>
+            <option value="prev">⏮️ Предыдущий трек</option>
+            <option value="play_pause">⏯️ Пауза / Возобновить</option>
+            <option value="stop">⏹️ Стоп</option>
+          </select>
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin: 8px 0 6px;">Плеер (необязательно):</label>
+          <select id="node-media-player" class="mia-modal-input">
+            <option value="auto">Авто · активная медиа-сессия</option>
+            <option value="yandex">Яндекс Музыка</option>
+            <option value="spotify">Spotify</option>
+            <option value="aimp">AIMP</option>
+            <option value="foobar">foobar2000</option>
+            <option value="browser">Браузерная вкладка</option>
+          </select>
+        </div>
+
+        <!-- Поле выбора громкости -->
+        <div id="node-group-volume" style="display: none;">
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Действие громкости:</label>
+          <select id="node-volume-select" class="mia-modal-input">
+            <option value="+10">🔊 Увеличить на 10%</option>
+            <option value="-10">🔉 Уменьшить на 10%</option>
+            <option value="mute">🔇 Выключить звук (Mute)</option>
+          </select>
+        </div>
+
+        <!-- Название узла в графе -->
+        <div>
+          <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Название узла (для схемы):</label>
+          <input type="text" id="node-title-input" class="mia-modal-input" placeholder="Запуск Steam">
+        </div>
+      </div>
+
+      <div class="mia-modal-actions">
+        <button class="mia-modal-btn mia-modal-btn-cancel" onclick="closeNodeModal()">Отмена</button>
+        <button class="mia-modal-btn mia-modal-btn-primary" onclick="submitNodeModal()">✨ Добавить в команду</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // === 0. КРАСИВЫЕ ДИАЛОГОВЫЕ ОКНА МИИ (MIA MODALS ВМЕСТО СТАНДАРТНЫХ GOOGLE CONFIRM/PROMPT) ===
+    let _currentModalResolver = null;
+    let _currentModalMode = 'confirm'; // 'confirm' | 'prompt' | 'alert'
+
+    function showConfirmModal(options = {}) {
+      return new Promise((resolve) => {
+        const {
+          title = 'Удалить команду?',
+          subtitle = 'Подтверждение действия',
+          message = 'Вы уверены, что хотите удалить эту команду?',
+          confirmText = '🗑️ Да, удалить',
+          cancelText = 'Отмена',
+          icon = '🗑️',
+          danger = true
+        } = options;
+
+        _currentModalMode = 'confirm';
+        _currentModalResolver = resolve;
+
+        const modal = document.getElementById('mia-custom-modal');
+        const box = modal.querySelector('.mia-modal-box');
+        const badge = document.getElementById('mia-modal-badge');
+        const iconEl = document.getElementById('mia-modal-icon');
+        const titleEl = document.getElementById('mia-modal-title');
+        const subtitleEl = document.getElementById('mia-modal-subtitle');
+        const msgEl = document.getElementById('mia-modal-message');
+        const inputWrap = document.getElementById('mia-modal-input-wrap');
+        const btnCancel = document.getElementById('mia-modal-btn-cancel');
+        const btnConfirm = document.getElementById('mia-modal-btn-confirm');
+
+        titleEl.innerText = title;
+        subtitleEl.innerText = subtitle;
+        msgEl.innerHTML = message;
+        iconEl.innerText = icon;
+        inputWrap.style.display = 'none';
+
+        btnCancel.style.display = 'inline-flex';
+        btnCancel.innerText = cancelText;
+
+        btnConfirm.innerText = confirmText;
+        btnConfirm.className = `mia-modal-btn ${danger ? 'mia-modal-btn-danger' : 'mia-modal-btn-primary'}`;
+
+        box.className = `mia-modal-box ${danger ? 'danger' : 'primary'}`;
+        badge.className = `mia-modal-badge ${danger ? 'danger' : 'primary'}`;
+
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => {
+          modal.classList.add('show');
+          btnConfirm.focus();
+        });
+      });
+    }
+
+    function showPromptModal(options = {}) {
+      return new Promise((resolve) => {
+        const {
+          title = 'Ввод данных',
+          subtitle = 'Действие',
+          message = 'Введите значение:',
+          defaultValue = '',
+          placeholder = '',
+          confirmText = 'Готово',
+          cancelText = 'Отмена',
+          icon = '✏️'
+        } = options;
+
+        _currentModalMode = 'prompt';
+        _currentModalResolver = resolve;
+
+        const modal = document.getElementById('mia-custom-modal');
+        const box = modal.querySelector('.mia-modal-box');
+        const badge = document.getElementById('mia-modal-badge');
+        const iconEl = document.getElementById('mia-modal-icon');
+        const titleEl = document.getElementById('mia-modal-title');
+        const subtitleEl = document.getElementById('mia-modal-subtitle');
+        const msgEl = document.getElementById('mia-modal-message');
+        const inputWrap = document.getElementById('mia-modal-input-wrap');
+        const inputEl = document.getElementById('mia-modal-input');
+        const btnCancel = document.getElementById('mia-modal-btn-cancel');
+        const btnConfirm = document.getElementById('mia-modal-btn-confirm');
+
+        titleEl.innerText = title;
+        subtitleEl.innerText = subtitle;
+        msgEl.innerHTML = message;
+        iconEl.innerText = icon;
+
+        inputWrap.style.display = 'block';
+        inputEl.value = defaultValue;
+        inputEl.placeholder = placeholder;
+
+        btnCancel.style.display = 'inline-flex';
+        btnCancel.innerText = cancelText;
+
+        btnConfirm.innerText = confirmText;
+        btnConfirm.className = 'mia-modal-btn mia-modal-btn-primary';
+
+        box.className = 'mia-modal-box primary';
+        badge.className = 'mia-modal-badge primary';
+
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => {
+          modal.classList.add('show');
+          inputEl.focus();
+          inputEl.select();
+        });
+      });
+    }
+
+    function showAlertModal(options = {}) {
+      return new Promise((resolve) => {
+        const {
+          title = 'Внимание',
+          subtitle = 'Уведомление системы',
+          message = '',
+          confirmText = 'Понятно',
+          icon = 'ℹ️',
+          danger = false
+        } = options;
+
+        _currentModalMode = 'alert';
+        _currentModalResolver = resolve;
+
+        const modal = document.getElementById('mia-custom-modal');
+        const box = modal.querySelector('.mia-modal-box');
+        const badge = document.getElementById('mia-modal-badge');
+        const iconEl = document.getElementById('mia-modal-icon');
+        const titleEl = document.getElementById('mia-modal-title');
+        const subtitleEl = document.getElementById('mia-modal-subtitle');
+        const msgEl = document.getElementById('mia-modal-message');
+        const inputWrap = document.getElementById('mia-modal-input-wrap');
+        const btnCancel = document.getElementById('mia-modal-btn-cancel');
+        const btnConfirm = document.getElementById('mia-modal-btn-confirm');
+
+        titleEl.innerText = title;
+        subtitleEl.innerText = subtitle;
+        msgEl.innerHTML = message;
+        iconEl.innerText = icon;
+        inputWrap.style.display = 'none';
+
+        btnCancel.style.display = 'none';
+        btnConfirm.innerText = confirmText;
+        btnConfirm.className = `mia-modal-btn ${danger ? 'mia-modal-btn-danger' : 'mia-modal-btn-primary'}`;
+
+        box.className = `mia-modal-box ${danger ? 'danger' : 'primary'}`;
+        badge.className = `mia-modal-badge ${danger ? 'danger' : 'primary'}`;
+
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => {
+          modal.classList.add('show');
+          btnConfirm.focus();
+        });
+      });
+    }
+
+    function closeMiaModal(confirmed) {
+      const modal = document.getElementById('mia-custom-modal');
+      if (!modal || modal.style.display === 'none') return;
+
+      modal.classList.remove('show');
+      setTimeout(() => {
+        modal.style.display = 'none';
+      }, 220);
+
+      if (_currentModalResolver) {
+        const resolve = _currentModalResolver;
+        _currentModalResolver = null;
+        if (_currentModalMode === 'confirm') {
+          resolve(Boolean(confirmed));
+        } else if (_currentModalMode === 'prompt') {
+          if (confirmed) {
+            const inputEl = document.getElementById('mia-modal-input');
+            resolve(inputEl.value);
+          } else {
+            resolve(null);
+          }
+        } else {
+          resolve(true);
+        }
+      }
+    }
+
+    function handleModalBackdropClick(event) {
+      if (event.target === document.getElementById('mia-custom-modal')) {
+        closeMiaModal(false);
+      }
+    }
+
+    // Клавиатурные сокращения для модального окна (Esc и Enter)
+    window.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('mia-custom-modal');
+      if (!modal || modal.style.display === 'none' || !modal.classList.contains('show')) return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMiaModal(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        closeMiaModal(true);
+      }
+    });
+
+    // Красивый перехват window.alert для показа фирменного окна
+    window.alert = function(msg) {
+      showAlertModal({ message: String(msg) });
+    };
+    // === 1. УПРАВЛЕНИЕ ВКЛАДКАМИ ===
+    function switchTab(tabId) {
+      document.querySelectorAll('.aam-tab').forEach(t => {
+        t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
+      });
+      document.querySelectorAll('.tab-pane').forEach(p => {
+        p.classList.toggle('active', p.id === `pane-${tabId}`);
+      });
+      document.querySelectorAll('.mobile-nav-item').forEach(m => {
+        m.classList.toggle('active', m.getAttribute('data-tab') === tabId);
+      });
+      // Инициализируем 3D аватар если открыта вкладка модели
+      if (tabId === 'avatar') {
+        if (!window.threeAvatarInitialized && (currentMascotMode === 'mia3d' || currentMascotMode === 'custom3d')) {
+          initThreeAvatar();
+        }
+        if (typeof switchMascotMode === 'function') {
+          switchMascotMode(currentMascotMode);
+        }
+      }
+      if (tabId === 'commands' && !window.visualFlowsLoaded) {
+        loadVisualCommands();
+      }
+      if (tabId === 'files' && !window.filesLoaded) {
+        window.filesLoaded = true;
+        loadFiles();
+      }
+      if (tabId === 'home') {
+        if (!window.astraMapInitialized) {
+          initAstraMap();
+        } else if (window.astraMap) {
+          setTimeout(() => window.astraMap.resize(), 150);
+        }
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // === 2. МОНИТОРИНГ И ВИДЖЕТЫ В РЕАЛЬНОМ ВРЕМЕНИ ===
+    async function updateSystemStats() {
+      try {
+        const res = await fetch('/api/system_stats');
+        const data = await res.json();
+        if (data && !data.error) {
+          const cpu = Math.round(data.cpu || 0);
+          const ram = Math.round(data.ram_percent || 0);
+          const ramUsed = data.ram_used_gb || 0;
+          const diskFree = data.disk_c_free_gb || 0;
+
+          document.getElementById('sys-cpu-val').innerText = `${cpu}%`;
+          document.getElementById('sys-cpu-bar').style.width = `${cpu}%`;
+
+          document.getElementById('sys-ram-val').innerText = `${ram}% · ${ramUsed} GB`;
+          document.getElementById('sys-ram-bar').style.width = `${ram}%`;
+
+          document.getElementById('sys-disk-val').innerText = `Свободно ${diskFree} GB`;
+          document.getElementById('sys-disk-bar').style.width = `${Math.min(100, Math.max(15, 100 - diskFree))}%`;
+        }
+      } catch (e) {}
+    }
+
+    async function updateStatusInfo() {
+      try {
+        const res = await fetch('/api/status');
+        const d = await res.json();
+        if (d && d.local_ip) {
+          const url = `http://${d.local_ip}:${d.port || 8000}`;
+          const el = document.getElementById('android-url-display');
+          if (el) el.innerText = url;
+        }
+      } catch (e) {}
+    }
+
+    // === 2.5 ИНТЕРАКТИВНАЯ КАРТА ASTRA GEO (MapLibre GL) ===
+    let astraMap = null;
+    let astraMarker = null;
+    window.astraMapInitialized = false;
+
+    function initAstraMap() {
+      if (window.astraMapInitialized || typeof maplibregl === 'undefined') return;
+      const container = document.getElementById('astra-map');
+      if (!container) return;
+
+      try {
+        astraMap = new maplibregl.Map({
+          container: 'astra-map',
+          style: {
+            version: 8,
+            sources: {
+              'carto-dark': {
+                type: 'raster',
+                tiles: [
+                  'https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+                  'https://b.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+                  'https://c.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+                  'https://d.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'
+                ],
+                tileSize: 256,
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
+              }
+            },
+            layers: [
+              {
+                id: 'carto-dark-layer',
+                type: 'raster',
+                source: 'carto-dark',
+                minzoom: 0,
+                maxzoom: 19
+              }
+            ]
+          },
+          center: [37.6173, 55.7558],
+          zoom: 11
+        });
+
+        window.astraMap = astraMap;
+        window.astraMapInitialized = true;
+
+        astraMap.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
+
+        astraMarker = new maplibregl.Marker({ color: '#cba6f7' })
+          .setLngLat([37.6173, 55.7558])
+          .addTo(astraMap);
+
+        fetchMapWeather(55.7558, 37.6173, 'Москва');
+
+        astraMap.on('click', (e) => {
+          const lng = e.lngLat.lng;
+          const lat = e.lngLat.lat;
+          astraMarker.setLngLat([lng, lat]);
+          const lbl = document.getElementById('map-coords-label');
+          if (lbl) lbl.textContent = `📍 Координаты: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          fetchMapWeather(lat, lng);
+        });
+      } catch (err) {
+        console.warn('MapLibre init error:', err);
+      }
+    }
+
+    async function searchMapLocation(query) {
+      const q = query || document.getElementById('map-search-input')?.value?.trim();
+      if (!q) return;
+
+      const sub = document.getElementById('map-sub-status');
+      if (sub) sub.innerText = `Поиск «${q}»...`;
+
+      try {
+        const res = await fetch(`/api/map/geocode?query=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (data && data.results && data.results.length > 0) {
+          const first = data.results[0];
+          const lat = first.lat;
+          const lon = first.lon;
+
+          if (astraMap) {
+            astraMap.flyTo({ center: [lon, lat], zoom: 12, essential: true });
+            if (astraMarker) astraMarker.setLngLat([lon, lat]);
+          }
+
+          const lbl = document.getElementById('map-coords-label');
+          if (lbl) lbl.textContent = `📍 ${first.display_name.split(',')[0]} (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+
+          if (sub) sub.innerText = `Найдено: ${first.display_name.split(',').slice(0, 2).join(',')}`;
+          fetchMapWeather(lat, lon, first.display_name.split(',')[0]);
+        } else {
+          if (sub) sub.innerText = `Локация «${q}» не найдена`;
+        }
+      } catch (e) {
+        if (sub) sub.innerText = 'Ошибка поиска координат';
+      }
+    }
+
+    function locateUser() {
+      if (!navigator.geolocation) {
+        showMascotBubble('Геолокация не поддерживается вашим браузером');
+        return;
+      }
+      const sub = document.getElementById('map-sub-status');
+      if (sub) sub.innerText = 'Определяю ваше местоположение...';
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          if (astraMap) {
+            astraMap.flyTo({ center: [lon, lat], zoom: 13, essential: true });
+            if (astraMarker) astraMarker.setLngLat([lon, lat]);
+          }
+          const lbl = document.getElementById('map-coords-label');
+          if (lbl) lbl.textContent = `📍 Вы здесь: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+          if (sub) sub.innerText = 'Текущая геолокация определена';
+          fetchMapWeather(lat, lon);
+        },
+        (err) => {
+          if (sub) sub.innerText = 'Доступ к геолокации запрещен';
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    async function fetchMapWeather(lat, lon, city = '') {
+      const mini = document.getElementById('map-weather-mini');
+      if (mini) mini.innerText = '🌡️ Запрос погоды...';
+      try {
+        let url = '/api/map/weather?';
+        if (city) url += `city=${encodeURIComponent(city)}&`;
+        if (lat !== undefined && lon !== undefined) url += `lat=${lat}&lon=${lon}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.ok) {
+          const temp = data.temp ? `${data.temp}` : '';
+          const desc = data.desc || '';
+          if (mini) mini.innerText = `🌡️ ${data.city}: ${temp} ${desc}`.trim();
+          const wTemp = document.getElementById('weather-temp');
+          const wDesc = document.getElementById('weather-desc');
+          if (wTemp && data.temp) wTemp.innerText = data.temp;
+          if (wDesc && data.desc) wDesc.innerText = `${data.desc} · ${data.city}`;
+        } else if (mini) {
+          mini.innerText = '🌡️ Погода недоступна';
+        }
+      } catch (e) {
+        if (mini) mini.innerText = '🌡️ Сбой загрузки погоды';
+      }
+    }
+
+    window.flyToMapLocation = function(locationName) {
+      switchTab('home');
+      searchMapLocation(locationName);
+    };
+
+    setInterval(updateSystemStats, 2500);
+    updateSystemStats();
+    updateStatusInfo();
+    setTimeout(initAstraMap, 200);
+
+    // === 3. ПУЛЬТ УПРАВЛЕНИЯ ПК И МУЛЬТИМЕДИА ===
+    async function sendRemote(action) {
+      if (navigator.vibrate) navigator.vibrate(20);
+      try {
+        const mediaActions = ['play_pause', 'next_track', 'prev_track', 'open_player'];
+        const selectedPlayer = document.getElementById('media-player-target')?.value || 'auto';
+        const res = await fetch('/api/remote_action', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(mediaActions.includes(action) ? { action, player: selectedPlayer } : { action })
+        });
+        const data = await res.json();
+        if (data.msg) {
+          showMascotBubble(data.msg);
+        }
+        if (action === 'screenshot' && data.path) {
+          window.open(data.path, '_blank');
+        }
+      } catch (e) {
+        console.error('Remote action error:', e);
+      }
+    }
+
+    async function refreshMediaPlayers() {
+      const status = document.getElementById('media-player-status');
+      if (!status) return;
+      try {
+        const response = await fetch('/api/media/status');
+        const data = await response.json();
+        const running = (data.running || []).join(', ');
+        status.textContent = running ? `Запущены: ${running}` : 'Плееры не запущены · управление готово';
+      } catch (_) {
+        status.textContent = 'Статус плееров недоступен';
+      }
+    }
+    setTimeout(refreshMediaPlayers, 350);
+    setInterval(refreshMediaPlayers, 10000);
+
+    function quickTaskAction(type) {
+      if (type === 'Заметки') {
+        sendMessageText('Мия, покажи мои заметки');
+      } else {
+        sendMessageText(`Мия, открой список ${type}`);
+      }
+    }
+
+    // === 4. ЧАТ С МИЕЙ (ТЕКСТ + ГОЛОС + ВЫЗОВ АГЕНТА) ===
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      sendMessageText(text);
+    }
+
+    function sendPresetMessage(txt) {
+      switchTab('home');
+      sendMessageText(txt);
+    }
+
+    function handleInputKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function appendMessage(sender, text, emotion) {
+      const container = document.getElementById('chat-messages');
+      const bubble = document.createElement('div');
+      bubble.className = `chat-bubble chat-bubble--${sender}`;
+
+      if (sender === 'asst') {
+        const emo = emotion || 'СПОКОЙСТВИЕ';
+        setAvatarEmotion(emo);
+        bubble.innerHTML = `<div class="emotion-badge">[${emo}]</div>${escapeHtml(text)}`;
+      } else {
+        bubble.innerText = text;
+      }
+
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function appendAgentTrace(thought, toolName, result) {
+      const container = document.getElementById('chat-messages');
+      const trace = document.createElement('div');
+      trace.className = 'agent-trace';
+      trace.innerHTML = `
+        <div class="agent-trace__thought">› ${escapeHtml(thought)}</div>
+        <div class="agent-trace__tool"><span>⚡ call:</span> <code>${escapeHtml(toolName)}</code></div>
+        <div class="agent-trace__result"><span>✓ res:</span> <span>${escapeHtml(result)}</span></div>
+      `;
+      container.appendChild(trace);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendMessageText(text) {
+      appendMessage('user', text);
+      showMascotBubble('Думаю над ответом…');
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ text, speak: true })
+        });
+        const d = await res.json();
+        if (d && d.reply) {
+          appendMessage('asst', d.reply, d.emotion);
+          showMascotBubble(d.reply.slice(0, 40) + '…');
+        }
+      } catch (e) {
+        appendMessage('asst', '⚠️ Не удалось получить ответ сервера: ' + e);
+      }
+    }
+
+    function clearChat() {
+      const container = document.getElementById('chat-messages');
+      container.innerHTML = `
+        <div class="chat-bubble chat-bubble--asst">
+          <div class="emotion-badge">[СПОКОЙСТВИЕ]</div>
+          История очищена. Я готова к новой задаче!
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // === 5. ГОЛОСОВОЙ ВВОД (SPEECH RECOGNITION + MEDIARECORDER FALLBACK ДЛЯ ВСЕХ УСТРОЙСТВ) ===
+    let recognition = null;
+    let isRecording = false;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isMediaRecording = false;
+
+    function initSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return null;
+      try {
+        const sr = new SpeechRecognition();
+        sr.lang = 'ru-RU';
+        sr.continuous = false;
+        sr.interimResults = false;
+
+        sr.onstart = () => {
+          isRecording = true;
+          document.getElementById('mic-btn')?.classList.add('recording');
+          document.getElementById('btn-voice-trigger')?.classList.add('recording');
+          showMascotBubble('Слушаю вас… говорите!');
+        };
+        sr.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          if (transcript) {
+            sendMessageText(transcript);
+          }
+        };
+        sr.onend = () => {
+          isRecording = false;
+          document.getElementById('mic-btn')?.classList.remove('recording');
+          document.getElementById('btn-voice-trigger')?.classList.remove('recording');
+        };
+        sr.onerror = (e) => {
+          console.warn('Speech recognition error:', e);
+          isRecording = false;
+          document.getElementById('mic-btn')?.classList.remove('recording');
+          document.getElementById('btn-voice-trigger')?.classList.remove('recording');
+        };
+        return sr;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function recordAudioFallback() {
+      if (isMediaRecording && mediaRecorder) {
+        mediaRecorder.stop();
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showAlertModal({
+          title: 'Микрофон',
+          subtitle: 'Голосовой ввод',
+          message: 'Браузер не поддерживает запись аудио напрямую. Вы можете общаться текстом или говорить в микрофон ПК (Мия слушает в фоне)!',
+          icon: '🎙️'
+        });
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.onstart = () => {
+          isMediaRecording = true;
+          document.getElementById('mic-btn')?.classList.add('recording');
+          document.getElementById('btn-voice-trigger')?.classList.add('recording');
+          showMascotBubble('Слушаю вас через микрофон... Говорите!');
+        };
+        mediaRecorder.onstop = async () => {
+          isMediaRecording = false;
+          document.getElementById('mic-btn')?.classList.remove('recording');
+          document.getElementById('btn-voice-trigger')?.classList.remove('recording');
+          stream.getTracks().forEach(t => t.stop());
+          showMascotBubble('Обрабатываю речь через Whisper...');
+          const audioBlob = new Blob(audioChunks, { type: 'audio/ogg' });
+          const formData = new FormData();
+          formData.append('file', audioBlob, 'voice.ogg');
+          try {
+            const res = await fetch('/api/transcribe_audio', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data && data.text && data.text.trim()) {
+              sendMessageText(data.text.trim());
+            } else {
+              showMascotBubble('Не удалось разобрать речь, скажите ещё раз.');
+            }
+          } catch (err) {
+            console.error('Transcribe error:', err);
+            showMascotBubble('Ошибка отправки аудио.');
+          }
+        };
+        mediaRecorder.start();
+      } catch (err) {
+        console.error('Microphone error:', err);
+        showAlertModal({
+          title: 'Доступ к микрофону',
+          subtitle: 'Разрешение устройства',
+          message: 'Разрешите доступ к микрофону в настройках браузера, чтобы общаться с Мией голосом!',
+          icon: '🎙️'
+        });
+      }
+    }
+
+    function toggleVoiceInput() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        if (!recognition) recognition = initSpeechRecognition();
+        if (isRecording) {
+          recognition.stop();
+        } else {
+          try {
+            recognition.start();
+          } catch (e) {
+            recordAudioFallback();
+          }
+        }
+      } else {
+        recordAudioFallback();
+      }
+    }
+
+    // === 6. ВИЗУАЛЬНЫЙ РЕДАКТОР КОМАНД (ASTRA COMMAND EDITOR) ===
+    let visualFlows = [];
+    let currentFlow = null;
+    window.visualFlowsLoaded = false;
+
+    async function loadVisualCommands() {
+      try {
+        const res = await fetch('/api/visual_commands');
+        visualFlows = await res.json();
+        window.visualFlowsLoaded = true;
+        renderCommandList();
+        if (visualFlows.length > 0) {
+          selectVisualFlow(visualFlows[0].id);
+        }
+      } catch (e) {
+        console.error('Failed to load visual commands:', e);
+      }
+    }
+
+    function renderCommandList() {
+      const container = document.getElementById('command-list-container');
+      container.innerHTML = '';
+      document.getElementById('commands-count').innerText = visualFlows.length;
+
+      visualFlows.forEach(f => {
+        const card = document.createElement('div');
+        card.className = `command-card ${currentFlow && currentFlow.id === f.id ? 'active' : ''}`;
+        card.onclick = () => selectVisualFlow(f.id);
+        card.innerHTML = `
+          <div class="command-card__head">
+            <span style="font-weight: 600;">${escapeHtml(f.name)}</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span style="font-size: 11px; opacity: 0.6;">${f.category || 'Общие'}</span>
+              <button class="aam-btn" onclick="event.stopPropagation(); deleteVisualFlow('${f.id}')" title="Удалить команду" style="padding: 2px 7px; font-size: 11px; background: rgba(243,139,168,0.15); color: #f38ba8; border: 1px solid rgba(243,139,168,0.3); border-radius: 4px; cursor: pointer;">🗑️</button>
+            </div>
+          </div>
+          <div class="command-card__meta">
+            ${f.nodes ? f.nodes.length : 0} узл. · ${f.edges ? f.edges.length : 0} связ.
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function selectVisualFlow(flowId) {
+      currentFlow = visualFlows.find(f => f.id === flowId);
+      if (!currentFlow) return;
+      document.getElementById('canvas-flow-title').innerText = currentFlow.name;
+      document.getElementById('canvas-flow-meta').innerText = `${currentFlow.nodes.length} узла · ${currentFlow.edges ? currentFlow.edges.length : 0} связей`;
+      renderCommandList();
+      renderCanvasNodes(currentFlow);
+    }
+
+    function renderCanvasNodes(flow) {
+      const canvas = document.getElementById('node-canvas');
+      const svg = document.getElementById('wire-svg');
+      
+      // Удаляем старые ноды (кроме SVG)
+      const oldNodes = canvas.querySelectorAll('.graph-node');
+      oldNodes.forEach(n => n.remove());
+      svg.innerHTML = '';
+
+      if (!flow.nodes) return;
+
+      flow.nodes.forEach(node => {
+        const el = document.createElement('div');
+        el.className = 'graph-node';
+        el.id = `canvas-${node.id}`;
+        el.style.left = `${node.x || 80}px`;
+        el.style.top = `${node.y || 100}px`;
+
+        const typeClass = `node-type-${node.type || 'action'}`;
+        el.innerHTML = `
+          <div class="graph-node__head ${typeClass}" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${node.type || 'Узел'}</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span>⚡</span>
+              <button onclick="event.stopPropagation(); deleteVisualNode('${node.id}')" title="Удалить узел" style="background: none; border: none; color: rgba(255,255,255,0.45); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; transition: color 0.2s;" onmouseover="this.style.color='#f38ba8'" onmouseout="this.style.color='rgba(255,255,255,0.45)'">✕</button>
+            </div>
+          </div>
+          <div class="graph-node__body">
+            <div class="graph-node__title">${escapeHtml(node.title || '')}</div>
+            <div class="graph-node__val">${escapeHtml(node.value || '')}</div>
+          </div>
+        `;
+
+        // Реализация перетаскивания узлов
+        makeDraggable(el, node, flow);
+        canvas.appendChild(el);
+      });
+
+      renderWires(flow);
+    }
+
+    function renderWires(flow) {
+      const svg = document.getElementById('wire-svg');
+      svg.innerHTML = '';
+      if (!flow.edges) return;
+
+      flow.edges.forEach(edge => {
+        const fromEl = document.getElementById(`canvas-${edge.from}`);
+        const toEl = document.getElementById(`canvas-${edge.to}`);
+        if (!fromEl || !toEl) return;
+
+        const x1 = fromEl.offsetLeft + fromEl.offsetWidth;
+        const y1 = fromEl.offsetTop + fromEl.offsetHeight / 2;
+        const x2 = toEl.offsetLeft;
+        const y2 = toEl.offsetTop + toEl.offsetHeight / 2;
+
+        const dx = Math.abs(x2 - x1) * 0.55;
+        const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+        const pathBase = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathBase.setAttribute('d', d);
+        pathBase.setAttribute('class', 'wire-path');
+
+        const pathPulse = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathPulse.setAttribute('d', d);
+        pathPulse.setAttribute('class', 'wire-pulse');
+
+        svg.appendChild(pathBase);
+        svg.appendChild(pathPulse);
+      });
+    }
+
+    function makeDraggable(el, nodeData, flow) {
+      let isDragging = false, startX, startY, origX, origY;
+
+      el.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        origX = el.offsetLeft;
+        origY = el.offsetTop;
+        el.style.zIndex = '10';
+
+        const onMouseMove = (ev) => {
+          if (!isDragging) return;
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          const newX = Math.max(10, origX + dx);
+          const newY = Math.max(10, origY + dy);
+          el.style.left = `${newX}px`;
+          el.style.top = `${newY}px`;
+          nodeData.x = newX;
+          nodeData.y = newY;
+          renderWires(flow);
+        };
+
+        const onMouseUp = () => {
+          isDragging = false;
+          el.style.zIndex = '3';
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    async function runCurrentVisualFlow() {
+      if (!currentFlow) return;
+      showMascotBubble(`Запуск команды «${currentFlow.name}»…`);
+
+      // Анимация подсветки шагов
+      if (currentFlow.nodes) {
+        for (const n of currentFlow.nodes) {
+          const el = document.getElementById(`canvas-${n.id}`);
+          if (el) el.classList.add('active-executing');
+          await new Promise(r => setTimeout(r, 350));
+          if (el) el.classList.remove('active-executing');
+        }
+      }
+
+      try {
+        const res = await fetch(`/api/visual_commands/run/${currentFlow.id}`, { method: 'POST' });
+        const d = await res.json();
+        if (d.ok) {
+          showMascotBubble(`Команда «${currentFlow.name}» успешно выполнена!`);
+          appendAgentTrace(`Команда ${currentFlow.name}`, 'visual_engine.run', 'Успешно');
+        }
+      } catch (e) {
+        alert('Ошибка исполнения команды: ' + e);
+      }
+    }
+
+    async function saveCurrentVisualFlow() {
+      if (!currentFlow) return;
+      try {
+        const res = await fetch('/api/visual_commands', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(currentFlow)
+        });
+        showMascotBubble('Команда успешно сохранена!');
+      } catch (e) {
+        alert('Ошибка сохранения: ' + e);
+      }
+    }
+
+    async function deleteVisualFlow(flowId) {
+      const targetFlow = visualFlows.find(f => f.id === flowId);
+      const flowName = targetFlow ? targetFlow.name : 'команду';
+
+      const confirmed = await showConfirmModal({
+        title: 'Удалить команду?',
+        subtitle: 'Действие необратимо',
+        message: `Ты действительно хочешь удалить команду <b style="color: #f38ba8;">«${escapeHtml(flowName)}»</b>?<br><span style="font-size: 12px; color: var(--color-text-muted); display: block; margin-top: 8px;">Она будет удалена из списка автоматизаций и больше не сможет запускаться по голосу или через горячие клавиши.</span>`,
+        confirmText: '🗑️ Да, удалить',
+        cancelText: 'Отмена',
+        icon: '🗑️',
+        danger: true
+      });
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch(`/api/visual_commands/${flowId}`, { method: 'DELETE' });
+        const d = await res.json();
+        if (d.ok) {
+          visualFlows = visualFlows.filter(f => f.id !== flowId);
+          if (currentFlow && currentFlow.id === flowId) {
+            currentFlow = visualFlows[0] || null;
+          }
+          renderCommandList();
+          if (currentFlow) {
+            selectVisualFlow(currentFlow.id);
+          } else {
+            document.getElementById('canvas-flow-title').innerText = 'Нет команд';
+            document.getElementById('canvas-flow-meta').innerText = '';
+            document.getElementById('node-canvas').querySelectorAll('.graph-node').forEach(n => n.remove());
+            document.getElementById('wire-svg').innerHTML = '';
+          }
+          showMascotBubble('Команда успешно удалена!');
+        }
+      } catch (e) {
+        showAlertModal({
+          title: 'Ошибка удаления',
+          subtitle: 'Сбой сети или сервера',
+          message: 'Не удалось удалить команду: ' + e,
+          icon: '⚠️',
+          danger: true
+        });
+      }
+    }
+
+    function deleteCurrentVisualFlow() {
+      if (currentFlow) deleteVisualFlow(currentFlow.id);
+    }
+
+    async function deleteVisualNode(nodeId) {
+      if (!currentFlow || !currentFlow.nodes) return;
+      const targetNode = currentFlow.nodes.find(n => n.id === nodeId);
+      const nodeTitle = targetNode ? targetNode.title : 'узел';
+
+      const confirmed = await showConfirmModal({
+        title: 'Удалить узел?',
+        subtitle: 'Редактор связей',
+        message: `Удалить узел <b style="color: #f38ba8;">«${escapeHtml(nodeTitle)}»</b> и все его соединения из текущей команды?`,
+        confirmText: '🗑️ Удалить',
+        cancelText: 'Отмена',
+        icon: '⚡',
+        danger: true
+      });
+      if (!confirmed) return;
+
+      currentFlow.nodes = currentFlow.nodes.filter(n => n.id !== nodeId);
+      currentFlow.edges = (currentFlow.edges || []).filter(e => e.from !== nodeId && e.to !== nodeId);
+      renderCanvasNodes(currentFlow);
+      saveCurrentVisualFlow();
+    }
+
+    function autoLayoutNodes() {
+      if (!currentFlow || !currentFlow.nodes) return;
+      currentFlow.nodes.forEach((n, idx) => {
+        n.x = 60 + idx * 280;
+        n.y = 120 + (idx % 2 === 1 ? 40 : 0);
+      });
+      renderCanvasNodes(currentFlow);
+    }
+
+    let installedAppsList = [];
+    let installedAppsLoaded = false;
+
+    async function loadInstalledAppsList() {
+      try {
+        const res = await fetch('/api/installed_apps');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          installedAppsList = data;
+          installedAppsLoaded = true;
+          populateAppDropdown();
+        }
+      } catch (e) {
+        console.warn('Failed to load installed apps:', e);
+      }
+    }
+
+    function populateAppDropdown() {
+      const sel = document.getElementById('node-app-select');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">-- Выберите программу из списка --</option>';
+      installedAppsList.forEach(app => {
+        const opt = document.createElement('option');
+        opt.value = app.path || app.name;
+        opt.dataset.name = app.name;
+        opt.textContent = `${app.name}`;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function refreshInstalledApps() {
+      showMascotBubble('Сканирую программы на ПК...');
+      await loadInstalledAppsList();
+      showMascotBubble(`Найдено ${installedAppsList.length} приложений!`);
+    }
+
+    function onNodeActionTypeChange() {
+      const type = document.getElementById('node-action-type').value;
+      const grpApp = document.getElementById('node-group-app');
+      const grpValue = document.getElementById('node-group-value');
+      const grpMedia = document.getElementById('node-group-media');
+      const grpVol = document.getElementById('node-group-volume');
+      const lblVal = document.getElementById('node-val-label');
+      const inpVal = document.getElementById('node-val-input');
+      const inpTitle = document.getElementById('node-title-input');
+
+      grpApp.style.display = 'none';
+      grpValue.style.display = 'none';
+      grpMedia.style.display = 'none';
+      grpVol.style.display = 'none';
+
+      if (type === 'open_app') {
+        grpApp.style.display = 'block';
+        inpTitle.value = 'Запустить программу';
+      } else if (type === 'open_url') {
+        grpValue.style.display = 'block';
+        lblVal.innerText = 'Ссылка (URL):';
+        inpVal.placeholder = 'https://youtube.com';
+        inpTitle.value = 'Открыть сайт';
+      } else if (type === 'yandex_wave') {
+        inpTitle.value = 'Моя Волна';
+      } else if (type === 'media_control') {
+        grpMedia.style.display = 'block';
+        inpTitle.value = 'Управление музыкой';
+      } else if (type === 'volume') {
+        grpVol.style.display = 'block';
+        inpTitle.value = 'Громкость';
+      } else if (type === 'speak') {
+        grpValue.style.display = 'block';
+        lblVal.innerText = 'Фраза для озвучки:';
+        inpVal.placeholder = 'Включаю ваш любимый плейлист!';
+        inpTitle.value = 'Ответ Мии';
+      } else if (type === 'screenshot') {
+        inpTitle.value = 'Сделать скриншот';
+      } else if (type === 'delay') {
+        grpValue.style.display = 'block';
+        lblVal.innerText = 'Секунды задержки:';
+        inpVal.placeholder = '2';
+        inpTitle.value = 'Пауза';
+      } else if (type === 'minimize_all') {
+        inpTitle.value = 'Свернуть все окна';
+      } else if (type === 'lock_screen') {
+        inpTitle.value = 'Заблокировать ПК';
+      } else if (type === 'powershell') {
+        grpValue.style.display = 'block';
+        lblVal.innerText = 'Команда PowerShell:';
+        inpVal.placeholder = 'notepad.exe';
+        inpTitle.value = 'Выполнить команду';
+      }
+    }
+
+    function onAppSelectChange() {
+      const sel = document.getElementById('node-app-select');
+      const customInp = document.getElementById('node-app-custom');
+      const titleInp = document.getElementById('node-title-input');
+      if (sel.selectedIndex > 0) {
+        const opt = sel.options[sel.selectedIndex];
+        customInp.value = opt.value;
+        titleInp.value = `Запустить ${opt.dataset.name || opt.text}`;
+      }
+    }
+
+    function onCustomAppInput() {
+      const customInp = document.getElementById('node-app-custom');
+      const titleInp = document.getElementById('node-title-input');
+      if (customInp.value.trim()) {
+        titleInp.value = `Запустить ${customInp.value.trim()}`;
+      }
+    }
+
+    function addNewNodeModal() {
+      if (!currentFlow) return;
+      if (!installedAppsLoaded) {
+        loadInstalledAppsList();
+      }
+      const modal = document.getElementById('mia-node-modal');
+      document.getElementById('node-action-type').value = 'open_app';
+      onNodeActionTypeChange();
+      modal.style.display = 'flex';
+      requestAnimationFrame(() => modal.classList.add('show'));
+    }
+
+    function closeNodeModal() {
+      const modal = document.getElementById('mia-node-modal');
+      modal.classList.remove('show');
+      setTimeout(() => { modal.style.display = 'none'; }, 220);
+    }
+
+    function handleNodeModalBackdropClick(event) {
+      if (event.target === document.getElementById('mia-node-modal')) {
+        closeNodeModal();
+      }
+    }
+
+    function submitNodeModal() {
+      if (!currentFlow) return;
+      const type = document.getElementById('node-action-type').value;
+      const titleInp = document.getElementById('node-title-input').value.trim();
+      let val = '';
+
+      if (type === 'open_app') {
+        val = document.getElementById('node-app-custom').value.trim() || document.getElementById('node-app-select').value;
+        if (!val) {
+          showAlertModal({ title: 'Выберите программу', message: 'Пожалуйста, выберите программу из списка или введите её название/путь!' });
+          return;
+        }
+      } else if (type === 'open_url') {
+        val = document.getElementById('node-val-input').value.trim();
+        if (!val) {
+          showAlertModal({ title: 'Введите URL', message: 'Пожалуйста, укажите адрес сайта для открытия!' });
+          return;
+        }
+      } else if (type === 'media_control') {
+        const mediaAction = document.getElementById('node-media-select').value;
+        const mediaPlayer = document.getElementById('node-media-player').value;
+        val = mediaPlayer && mediaPlayer !== 'auto' ? `${mediaPlayer}:${mediaAction}` : mediaAction;
+      } else if (type === 'volume') {
+        val = document.getElementById('node-volume-select').value;
+      } else if (type === 'speak' || type === 'delay' || type === 'powershell') {
+        val = document.getElementById('node-val-input').value.trim();
+      }
+
+      const newId = `node_${Date.now()}`;
+      const title = titleInp || 'Действие';
+
+      currentFlow.nodes.push({
+        id: newId,
+        type: 'action',
+        subType: type,
+        title: title,
+        value: val,
+        x: 100 + currentFlow.nodes.length * 50,
+        y: 200
+      });
+
+      if (currentFlow.nodes.length > 1) {
+        const prev = currentFlow.nodes[currentFlow.nodes.length - 2];
+        currentFlow.edges.push({ from: prev.id, to: newId });
+      }
+
+      closeNodeModal();
+      renderCanvasNodes(currentFlow);
+      saveCurrentVisualFlow();
+      showMascotBubble(`Добавлен шаг «${title}»!`);
+    }
+
+    async function createNewVisualFlow() {
+      const name = await showPromptModal({
+        title: 'Создать новую команду',
+        subtitle: 'Голосовая автоматизация',
+        message: 'Введите название для новой команды (это будет и фразой активации):',
+        defaultValue: 'Моя автоматизация',
+        placeholder: 'Например: Включить стрим',
+        confirmText: '✨ Создать команду',
+        icon: '⚡'
+      });
+      if (!name || !name.trim()) return;
+
+      const newF = {
+        id: `flow_${Date.now()}`,
+        name: name.trim(),
+        category: 'Пользовательские',
+        nodes: [
+          { id: 'n1', type: 'trigger', subType: 'voice', title: 'Голос', value: name.trim().toLowerCase(), x: 60, y: 140 },
+          { id: 'n2', type: 'action', subType: 'speak', title: 'Ответ Мии', value: `Выполняю команду ${name.trim()}!`, x: 340, y: 140 }
+        ],
+        edges: [{ from: 'n1', to: 'n2' }]
+      };
+      visualFlows.push(newF);
+      selectVisualFlow(newF.id);
+      saveCurrentVisualFlow();
+    }
+
+    // === 7. 3D АВАТАР (THREE.JS PROCEDURAL CYBER-ANIME) ===
+    window.threeAvatarInitialized = false;
+    let scene, camera, renderer, headGroup, eyeLeft, eyeRight, mouthMesh, headphoneL, headphoneR;
+    let customMixer = null;
+    let customLookBones = [];
+    let targetMouseX = 0, targetMouseY = 0;
+    let isSpeakingAvatar = false;
+
+    function initThreeAvatar() {
+      const container = document.getElementById('three-avatar-container');
+      if (!container || window.threeAvatarInitialized) return;
+      if (!window.THREE) return;
+
+      const w = container.clientWidth > 0 ? container.clientWidth : 640;
+      const h = container.clientHeight > 0 ? container.clientHeight : 520;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+      camera.position.set(0, 0, 5.2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      container.appendChild(renderer.domElement);
+
+      // Освещение
+      const ambLight = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(ambLight);
+
+      const dirLight = new THREE.DirectionalLight(0xcba6f7, 1.4);
+      dirLight.position.set(3, 4, 5);
+      scene.add(dirLight);
+
+      const cyanRimLight = new THREE.DirectionalLight(0x89b4fa, 1.2);
+      cyanRimLight.position.set(-4, -2, -2);
+      scene.add(cyanRimLight);
+
+      // Группа головы
+      headGroup = new THREE.Group();
+      scene.add(headGroup);
+
+      // Голова (гладкая сфероидная форма с приятным аниме-шейдингом)
+      const headGeo = new THREE.SphereGeometry(1.05, 32, 32);
+      headGeo.scale(1, 1.15, 0.95);
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0xffe8df,
+        roughness: 0.45,
+        metalness: 0.05
+      });
+      const head = new THREE.Mesh(headGeo, headMat);
+      headGroup.add(head);
+
+      // Аниме-глаза (светящиеся неоновые ирисы)
+      const eyeGeo = new THREE.SphereGeometry(0.18, 24, 24);
+      eyeGeo.scale(1, 1.3, 0.4);
+      const eyeMat = new THREE.MeshStandardMaterial({
+        color: 0x89b4fa,
+        emissive: 0x89b4fa,
+        emissiveIntensity: 0.45,
+        roughness: 0.1
+      });
+
+      eyeLeft = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeLeft.position.set(-0.38, 0.1, 0.82);
+      headGroup.add(eyeLeft);
+
+      eyeRight = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeRight.position.set(0.38, 0.1, 0.82);
+      headGroup.add(eyeRight);
+
+      // Рот (мимика и липсинк)
+      const mouthGeo = new THREE.BoxGeometry(0.24, 0.06, 0.08);
+      const mouthMat = new THREE.MeshStandardMaterial({ color: 0xf38ba8, roughness: 0.2 });
+      mouthMesh = new THREE.Mesh(mouthGeo, mouthMat);
+      mouthMesh.position.set(0, -0.42, 0.86);
+      headGroup.add(mouthMesh);
+
+      // Кибер-наушники со светящимися кругами
+      const hpGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.22, 24);
+      hpGeo.rotateZ(Math.PI / 2);
+      const hpMat = new THREE.MeshStandardMaterial({
+        color: 0x1f202e,
+        emissive: 0xcba6f7,
+        emissiveIntensity: 0.35,
+        metalness: 0.8
+      });
+
+      headphoneL = new THREE.Mesh(hpGeo, hpMat);
+      headphoneL.position.set(-1.15, 0.05, 0);
+      headGroup.add(headphoneL);
+
+      headphoneR = new THREE.Mesh(hpGeo, hpMat);
+      headphoneR.position.set(1.15, 0.05, 0);
+      headGroup.add(headphoneR);
+
+      // Кибер-ободок
+      const bandGeo = new THREE.TorusGeometry(1.08, 0.06, 16, 32, Math.PI);
+      const bandMat = new THREE.MeshStandardMaterial({ color: 0x2e3048, metalness: 0.9 });
+      const band = new THREE.Mesh(bandGeo, bandMat);
+      band.position.set(0, 0.35, 0);
+      headGroup.add(band);
+
+      // Кибер-кошачьи ушки как у Нейроны (FurryDev2007)
+      const earGeo = new THREE.ConeGeometry(0.38, 0.65, 4);
+      const earMat = new THREE.MeshStandardMaterial({ color: 0x181825, roughness: 0.2, metalness: 0.8 });
+      const earGlowMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 0.9, roughness: 0.1 });
+
+      const earL = new THREE.Mesh(earGeo, earMat);
+      earL.position.set(-0.62, 1.25, 0.05);
+      earL.rotation.z = -0.32;
+      headGroup.add(earL);
+
+      const earInnerL = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.45, 4), earGlowMat);
+      earInnerL.position.set(-0.60, 1.25, 0.12);
+      earInnerL.rotation.z = -0.32;
+      headGroup.add(earInnerL);
+
+      const earR = new THREE.Mesh(earGeo, earMat);
+      earR.position.set(0.62, 1.25, 0.05);
+      earR.rotation.z = 0.32;
+      headGroup.add(earR);
+
+      const earInnerR = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.45, 4), earGlowMat);
+      earInnerR.position.set(0.60, 1.25, 0.12);
+      earInnerR.rotation.z = 0.32;
+      headGroup.add(earInnerR);
+
+      // Аниме-волосы (сиреневые пряди как у Нейроны)
+      const hairMat = new THREE.MeshStandardMaterial({ color: 0xcba6f7, roughness: 0.5, metalness: 0.1 });
+      const bangGeo = new THREE.SphereGeometry(1.12, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.45);
+      const bangs = new THREE.Mesh(bangGeo, hairMat);
+      bangs.position.set(0, 0.35, 0);
+      headGroup.add(bangs);
+
+      // Проверка пользовательской 3D модели (.glb)
+      try {
+        fetch('/api/mascot_info').then(r => r.json()).then(info => {
+          const LoaderClass = (window.THREE && THREE.GLTFLoader) || (typeof GLTFLoader !== 'undefined' ? GLTFLoader : null);
+          if (info.custom_3d && window.THREE && LoaderClass) {
+            const loader = new LoaderClass();
+            loader.load(
+              info.custom_3d,
+              (gltf) => {
+                const model = gltf.scene;
+                // Автоматическое масштабирование и центрирование модели любого размера
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                const scale = 2.4 / maxDim;
+                model.scale.setScalar(scale);
+                model.position.sub(center.multiplyScalar(scale));
+                // Keep the feet near the lower third of the viewport.
+                const fittedBox = new THREE.Box3().setFromObject(model);
+                const fittedCenter = fittedBox.getCenter(new THREE.Vector3());
+                model.position.y -= fittedCenter.y + 0.35;
+
+                // Frame arbitrary model proportions instead of assuming a head-sized mesh.
+                const fittedSize = fittedBox.getSize(new THREE.Vector3());
+                const radius = Math.max(fittedSize.length() * 0.5, 0.8);
+                camera.position.set(0, radius * 0.15, Math.max(4.2, radius * 2.7));
+                camera.near = Math.max(0.01, radius / 100);
+                camera.far = Math.max(100, radius * 20);
+                camera.updateProjectionMatrix();
+
+                // Play the first embedded animation when a GLB/VRM provides one.
+                if (gltf.animations && gltf.animations.length) {
+                  customMixer = new THREE.AnimationMixer(model);
+                  gltf.animations.forEach((clip) => customMixer.clipAction(clip).play());
+                }
+                // Locate common neck/head/eye bones for gentle cursor tracking.
+                model.traverse((node) => {
+                  if (!node.isBone) return;
+                  const name = String(node.name || '').toLowerCase().replace(/[_.-]/g, '');
+                  if (/(head|neck|на ш|голова|шея)/.test(name)) {
+                    customLookBones.push({ bone: node, base: node.rotation.clone(), amount: name.includes('head') ? 0.55 : 0.28 });
+                  }
+                });
+                scene.add(model);
+                window.custom3DModel = model;
+                if (currentMascotMode === 'custom3d') {
+                  headGroup.visible = false;
+                  model.visible = true;
+                } else {
+                  model.visible = false;
+                }
+              },
+              undefined,
+              (err) => {
+                console.warn('[Three] Ошибка загрузки кастомной 3D модели:', err);
+                if (headGroup) headGroup.visible = true;
+              }
+            );
+          }
+        }).catch(() => {});
+      } catch (e) {}
+
+      // Отслеживание курсора мыши
+      window.addEventListener('mousemove', (e) => {
+        const x = (e.clientX / window.innerWidth) * 2 - 1;
+        const y = -(e.clientY / window.innerHeight) * 2 + 1;
+        targetMouseX = x * 0.45;
+        targetMouseY = y * 0.35;
+      });
+
+      // Анимационный цикл 60 FPS
+      let clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+        const t = clock.elapsedTime;
+        if (customMixer) customMixer.update(dt);
+
+        // Плавное слежение за мышью (LERP)
+        headGroup.rotation.y += (targetMouseX - headGroup.rotation.y) * 0.06;
+        headGroup.rotation.x += (-targetMouseY - headGroup.rotation.x) * 0.06;
+        customLookBones.forEach(({ bone, base, amount }) => {
+          bone.rotation.x += (base.x - targetMouseY * amount - bone.rotation.x) * 0.06;
+          bone.rotation.y += (base.y + targetMouseX * amount - bone.rotation.y) * 0.06;
+        });
+
+        // Дыхание (синусоидальное покачивание)
+        headGroup.position.y = Math.sin(t * 1.8) * 0.04;
+
+        // Моргание каждые 3.5 секунды
+        const blinkCycle = t % 3.5;
+        if (blinkCycle > 3.35) {
+          eyeLeft.scale.y = 0.1;
+          eyeRight.scale.y = 0.1;
+        } else {
+          eyeLeft.scale.y = 1.3;
+          eyeRight.scale.y = 1.3;
+        }
+
+        // Анимация открывания рта при речи (липсинк)
+        if (isSpeakingAvatar) {
+          mouthMesh.scale.y = 1.0 + Math.abs(Math.sin(t * 14)) * 3.2;
+          mouthMesh.scale.x = 1.0 + Math.abs(Math.cos(t * 10)) * 0.4;
+        } else {
+          mouthMesh.scale.set(1, 1, 1);
+        }
+
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        if (!container || !renderer || !camera) return;
+        const rw = container.clientWidth > 0 ? container.clientWidth : 640;
+        const rh = container.clientHeight > 0 ? container.clientHeight : 520;
+        camera.aspect = rw / rh;
+        camera.updateProjectionMatrix();
+        renderer.setSize(rw, rh);
+      });
+
+      window.threeAvatarInitialized = true;
+    }
+
+    function setAvatarEmotion(emo) {
+      document.querySelectorAll('.btn-emotion').forEach(b => {
+        b.classList.toggle('active', b.innerText.includes(emo));
+      });
+      if (!eyeLeft) return;
+      if (emo === 'РАДОСТЬ' || emo === 'СМЕХ') {
+        eyeLeft.material.emissive.setHex(0xf38ba8);
+        eyeRight.material.emissive.setHex(0xf38ba8);
+      } else if (emo === 'УДИВЛЕНИЕ') {
+        eyeLeft.material.emissive.setHex(0xf9e2af);
+        eyeRight.material.emissive.setHex(0xf9e2af);
+      } else {
+        eyeLeft.material.emissive.setHex(0x89b4fa);
+        eyeRight.material.emissive.setHex(0x89b4fa);
+      }
+    }
+
+    function testLipSync() {
+      isSpeakingAvatar = true;
+      showMascotBubble('Тестирую мимику и синхронизацию речи!');
+      setTimeout(() => {
+        isSpeakingAvatar = false;
+      }, 3500);
+    }
+
+    let currentMascotMode = localStorage.getItem('mia_mascot_mode') || 'yuno';
+
+    function switchMascotMode(mode) {
+      currentMascotMode = mode;
+      localStorage.setItem('mia_mascot_mode', mode);
+
+      const yunoCont = document.getElementById('yuno-sketchfab-container');
+      const threeCont = document.getElementById('three-avatar-container');
+      const twoCont = document.getElementById('two-avatar-container');
+      const badge = document.getElementById('active-mascot-badge');
+
+      ['btn-mode-yuno', 'btn-mode-mia3d', 'btn-mode-custom3d', 'btn-mode-2d'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+
+      if (yunoCont) yunoCont.style.display = 'none';
+      if (threeCont) threeCont.style.display = 'none';
+      if (twoCont) twoCont.style.display = 'none';
+
+      if (mode === 'yuno') {
+        if (yunoCont) yunoCont.style.display = 'block';
+        const b = document.getElementById('btn-mode-yuno');
+        if (b) b.classList.add('active');
+        if (badge) {
+          badge.innerText = '🌸 Юно Гасай (3D)';
+          badge.style.color = '#f38ba8';
+          badge.style.borderColor = 'rgba(243, 139, 168, 0.35)';
+        }
+        showMascotBubble('Выбрана 3D модель: Юно Гасай (Mirai Nikki)!');
+      } else if (mode === 'mia3d') {
+        if (threeCont) threeCont.style.display = 'block';
+        if (!window.threeAvatarInitialized) initThreeAvatar();
+        if (headGroup) headGroup.visible = true;
+        if (window.custom3DModel) window.custom3DModel.visible = false;
+        const b = document.getElementById('btn-mode-mia3d');
+        if (b) b.classList.add('active');
+        if (badge) {
+          badge.innerText = '⚡ Кибер-Мия (3D)';
+          badge.style.color = '#89b4fa';
+          badge.style.borderColor = 'rgba(137, 180, 250, 0.35)';
+        }
+        showMascotBubble('Выбрана процедурная 3D модель Мии!');
+      } else if (mode === 'custom3d') {
+        if (threeCont) threeCont.style.display = 'block';
+        if (!window.threeAvatarInitialized) initThreeAvatar();
+        if (window.custom3DModel) {
+          window.custom3DModel.visible = true;
+          if (headGroup) headGroup.visible = false;
+        } else {
+          showMascotBubble('Своя 3D модель загружается. Если её ещё нет, загрузите .glb файл ниже!');
+        }
+        const b = document.getElementById('btn-mode-custom3d');
+        if (b) b.classList.add('active');
+        if (badge) {
+          badge.innerText = '📦 Своя 3D модель';
+          badge.style.color = '#a6e3a1';
+          badge.style.borderColor = 'rgba(166, 227, 161, 0.35)';
+        }
+      } else if (mode === '2d') {
+        if (twoCont) twoCont.style.display = 'flex';
+        const b = document.getElementById('btn-mode-2d');
+        if (b) b.classList.add('active');
+        if (badge) {
+          badge.innerText = '🖼️ 2D Аватар';
+          badge.style.color = '#cba6f7';
+          badge.style.borderColor = 'rgba(203, 166, 247, 0.35)';
+        }
+        showMascotBubble('Выбран 2D арт Мии!');
+      }
+    }
+
+    // Автоматическая активация сохраненного режима маскота
+    setTimeout(() => {
+      switchMascotMode(currentMascotMode);
+    }, 150);
+
+    async function handleUpload2D(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        showMascotBubble('Загружаю 2D аватар...');
+        const res = await fetch('/api/upload_mascot_2d', { method: 'POST', body: formData });
+        const d = await res.json();
+        if (d.ok) {
+          const cornerImg = document.getElementById('corner-mascot-img');
+          if (cornerImg) cornerImg.src = d.url;
+          const fullImg = document.getElementById('full-mascot-img');
+          if (fullImg) fullImg.src = d.url;
+          showMascotBubble('Новый 2D аватар установлен!');
+        }
+      } catch (e) {
+        alert('Ошибка загрузки 2D аватара: ' + e);
+      }
+    }
+
+    async function handleUpload3D(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        showMascotBubble('Загружаю 3D модель...');
+        const res = await fetch('/api/upload_mascot_3d', { method: 'POST', body: formData });
+        const d = await res.json();
+        if (res.ok && d.ok) {
+          showMascotBubble('3D модель загружена! Перезагружаю сцену...');
+          setTimeout(() => location.reload(), 1200);
+        } else {
+          showMascotBubble(d.detail || 'Не удалось загрузить 3D модель.');
+        }
+      } catch (e) {
+        alert('Ошибка загрузки 3D модели: ' + e);
+      }
+    }
+
+    function resetDefaultMascot() {
+      const cornerImg = document.getElementById('corner-mascot-img');
+      if (cornerImg) cornerImg.src = '/static/mascot.png';
+      const fullImg = document.getElementById('full-mascot-img');
+      if (fullImg) fullImg.src = '/static/mascot.png';
+      showMascotBubble('Возвращена дефолтная Мия (Нейрона)!');
+    }
+
+    function toggleCornerMascot() {
+      const el = document.getElementById('corner-mascot');
+      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    }
+
+    function mascotClick() {
+      showMascotBubble('Я слушаю! Назови команду или нажми на микрофон.');
+      toggleVoiceInput();
+    }
+
+    function showMascotBubble(text) {
+      const b = document.getElementById('mascot-bubble-text');
+      if (b) {
+        b.innerText = text;
+        b.style.display = 'block';
+        clearTimeout(window.mascotTimer);
+        window.mascotTimer = setTimeout(() => {
+          b.innerText = 'Мия ✦ На связи';
+        }, 5000);
+      }
+    }
+
+    // WebSocket телеметрия для липсинка; polling остаётся резервом.
+    let avatarSocket;
+    function connectAvatarTelemetry() {
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        avatarSocket = new WebSocket(`${proto}//${location.host}/ws`);
+        avatarSocket.onmessage = (event) => {
+          const d = JSON.parse(event.data || '{}');
+          if (d.type !== 'avatar_status') return;
+          isSpeakingAvatar = !!d.speaking;
+          if (d.emotion) setAvatarEmotion(d.emotion);
+        };
+        avatarSocket.onclose = () => { avatarSocket = null; setTimeout(connectAvatarTelemetry, 3000); };
+        avatarSocket.onerror = () => { try { avatarSocket.close(); } catch (_) {} };
+      } catch (_) {}
+    }
+    connectAvatarTelemetry();
+    setInterval(async () => {
+      if (avatarSocket && avatarSocket.readyState === WebSocket.OPEN) return;
+      try {
+        const res = await fetch('/api/avatar_status');
+        const d = await res.json();
+        if (d) {
+          isSpeakingAvatar = d.speaking;
+          if (d.emotion) setAvatarEmotion(d.emotion);
+        }
+      } catch (e) {}
+    }, 400);
+
+    // === 8. НАСТРОЙКИ ГОЛОСА И ТЕСТ ===
+    async function changeVoiceSpeaker(spk) {
+      try {
+        await fetch('/api/set_voice', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ voice: spk })
+        });
+        showMascotBubble(`Голос переключен на: ${spk}`);
+      } catch (e) {}
+    }
+
+    async function testCurrentVoice() {
+      try {
+        await fetch('/api/test_say', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            text: 'Привет! Я говорю чётко, раздельно, с естественными паузами и никогда не обрываюсь на полуслове.'
+          })
+        });
+      } catch (e) {}
+    }
+
+    // === 9. PWA И МОБИЛЬНАЯ УСТАНОВКА НА ANDROID ===
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+    });
+
+    function installPWA() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          deferredPrompt = null;
+        });
+      }
+      showAlertModal({
+        title: 'Установка на Android',
+        subtitle: 'Пульт Мия Connect',
+        message: '<b>Как добавить на экран смартфона:</b><br><br>1. Нажмите меню Chrome (3 точки в правом верхнем углу).<br>2. В появившемся окне нажмите <b>«Создать ярлык»</b>.<br>3. Иконка Мии появится на рабочем столе телефона как приложение!',
+        icon: '📱'
+      });
+    }
+
+    // === 10. ФАЙЛОВЫЙ ПРОВОДНИК ПК (ASTRA FILE EXPLORER) ===
+    let currentFilePath = '';
+    let currentFilesData = null;
+    window.filesLoaded = false;
+
+    async function loadFiles(targetPath = '') {
+      const grid = document.getElementById('files-list-grid');
+      if (grid) {
+        grid.innerHTML = '<div style="color: var(--color-text-dim); padding: 20px; font-size: 13px;">⏳ Загрузка файлов...</div>';
+      }
+      try {
+        const url = targetPath ? `/api/files/list?path=${encodeURIComponent(targetPath)}` : '/api/files/list';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.error) {
+          showAlertModal({ title: 'Ошибка доступа', message: data.error, danger: true });
+          return;
+        }
+        currentFilesData = data;
+        currentFilePath = data.current_path || '';
+        const pathInput = document.getElementById('files-path-input');
+        if (pathInput) pathInput.value = currentFilePath;
+        renderQuickDrives(data);
+        renderBreadcrumbs(data);
+        renderFilesList(data);
+      } catch (err) {
+        console.error('Files load error:', err);
+        if (grid) grid.innerHTML = '<div style="color: #f38ba8; padding: 20px;">Ошибка загрузки папки</div>';
+      }
+    }
+
+    function renderQuickDrives(data) {
+      const bar = document.getElementById('files-quick-bar');
+      if (!bar) return;
+      bar.innerHTML = '';
+
+      if (data.drives) {
+        data.drives.forEach(d => {
+          const btn = document.createElement('button');
+          btn.className = `quick-drive-btn ${currentFilePath.toLowerCase().startsWith(d.path.toLowerCase()) ? 'active' : ''}`;
+          btn.innerHTML = `<span>💾 ${escapeHtml(d.name)}</span> <span style="font-size: 10px; opacity: 0.7;">(${d.free_gb} ГБ своб.)</span>`;
+          btn.onclick = () => loadFiles(d.path);
+          bar.appendChild(btn);
+        });
+      }
+
+      if (data.quick_access) {
+        data.quick_access.forEach(q => {
+          const btn = document.createElement('button');
+          btn.className = `quick-drive-btn ${currentFilePath.toLowerCase() === q.path.toLowerCase() ? 'active' : ''}`;
+          let icon = '📁';
+          if (q.name.includes('Рабочий стол')) icon = '🖥️';
+          else if (q.name.includes('Загрузки')) icon = '📥';
+          else if (q.name.includes('Документы')) icon = '📄';
+          else if (q.name.includes('Папка')) icon = '⚡';
+          btn.innerHTML = `<span>${icon} ${escapeHtml(q.name)}</span>`;
+          btn.onclick = () => loadFiles(q.path);
+          bar.appendChild(btn);
+        });
+      }
+    }
+
+    function renderBreadcrumbs(data) {
+      const bc = document.getElementById('files-breadcrumbs');
+      if (!bc) return;
+      bc.innerHTML = '';
+      if (!data.breadcrumbs || data.breadcrumbs.length === 0) return;
+
+      data.breadcrumbs.forEach((b, idx) => {
+        const item = document.createElement('span');
+        item.className = 'crumb-item';
+        item.innerText = b.name;
+        item.onclick = () => loadFiles(b.path);
+        bc.appendChild(item);
+
+        if (idx < data.breadcrumbs.length - 1) {
+          const sep = document.createElement('span');
+          sep.innerText = ' / ';
+          sep.style.opacity = '0.4';
+          bc.appendChild(sep);
+        }
+      });
+    }
+
+    function renderFilesList(data, filterQuery = '') {
+      const grid = document.getElementById('files-list-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const q = (filterQuery || '').toLowerCase().trim();
+      const filteredFolders = (data.folders || []).filter(f => !q || f.name.toLowerCase().includes(q));
+      const filteredFiles = (data.files || []).filter(f => !q || f.name.toLowerCase().includes(q));
+
+      if (filteredFolders.length === 0 && filteredFiles.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1 / -1; color: var(--color-text-dim); padding: 30px; text-align: center;">Папка пуста или нет подходящих файлов</div>';
+        return;
+      }
+
+      filteredFolders.forEach(folder => {
+        const card = document.createElement('div');
+        card.className = 'file-card';
+        card.innerHTML = `
+          <div class="file-card__icon" style="color: #f9e2af;">📁</div>
+          <div class="file-card__details" onclick="loadFiles('${escapeJsPath(folder.path)}')">
+            <div class="file-card__name" title="${escapeHtml(folder.name)}">${escapeHtml(folder.name)}</div>
+            <div class="file-card__meta">Папка · ${folder.modified || ''}</div>
+          </div>
+          <div class="file-card__actions">
+            <button class="file-act-btn" onclick="event.stopPropagation(); downloadPath('${escapeJsPath(folder.path)}')" title="Скачать папку архивом .ZIP">📦 .ZIP</button>
+            <button class="file-act-btn" onclick="event.stopPropagation(); openFileOnPC('${escapeJsPath(folder.path)}')" title="Открыть на мониторе ПК">🖥️</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      filteredFiles.forEach(file => {
+        const card = document.createElement('div');
+        card.className = 'file-card';
+
+        let icon = '📄';
+        let iconColor = 'var(--color-text-muted)';
+        if (file.type === 'image') { icon = '🖼️'; iconColor = '#cba6f7'; }
+        else if (file.type === 'audio') { icon = '🎵'; iconColor = '#89b4fa'; }
+        else if (file.type === 'video') { icon = '🎬'; iconColor = '#f38ba8'; }
+        else if (file.type === 'archive') { icon = '📦'; iconColor = '#fab387'; }
+        else if (file.type === 'code') { icon = '💻'; iconColor = '#a6e3a1'; }
+        else if (file.type === 'app') { icon = '⚡'; iconColor = '#94e2d5'; }
+
+        card.innerHTML = `
+          <div class="file-card__icon" style="color: ${iconColor};">${icon}</div>
+          <div class="file-card__details" onclick="downloadPath('${escapeJsPath(file.path)}')">
+            <div class="file-card__name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            <div class="file-card__meta">${file.size || ''} · ${file.modified || ''}</div>
+          </div>
+          <div class="file-card__actions">
+            <button class="file-act-btn" onclick="event.stopPropagation(); downloadPath('${escapeJsPath(file.path)}')" title="Скачать файл">⬇️</button>
+            <button class="file-act-btn" onclick="event.stopPropagation(); openFileOnPC('${escapeJsPath(file.path)}')" title="Открыть на мониторе ПК">🖥️</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function escapeJsPath(p) {
+      return (p || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function filterFilesList() {
+      const q = document.getElementById('files-search-filter').value;
+      if (currentFilesData) {
+        renderFilesList(currentFilesData, q);
+      }
+    }
+
+    function goUpFolder() {
+      if (currentFilesData && currentFilesData.parent) {
+        loadFiles(currentFilesData.parent);
+      }
+    }
+
+    function navigateToCustomPath() {
+      const val = document.getElementById('files-path-input').value.trim();
+      if (val) loadFiles(val);
+    }
+
+    function refreshFiles() {
+      loadFiles(currentFilePath);
+    }
+
+    function downloadPath(p) {
+      window.open(`/api/files/download?path=${encodeURIComponent(p)}`, '_blank');
+    }
+
+    function downloadCurrentFolderZip() {
+      if (currentFilePath) {
+        showMascotBubble('Архивирую папку в ZIP...');
+        downloadPath(currentFilePath);
+      }
+    }
+
+    async function openFileOnPC(p) {
+      try {
+        const res = await fetch('/api/files/open', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ path: p })
+        });
+        const d = await res.json();
+        if (d.ok) {
+          showMascotBubble(d.message || 'Открыто на мониторе ПК!');
+        } else {
+          showAlertModal({ title: 'Ошибка запуска', message: d.error || 'Не удалось открыть файл на ПК', danger: true });
+        }
+      } catch (e) {
+        showAlertModal({ title: 'Ошибка', message: String(e), danger: true });
+      }
+    }
+
+    function openCurrentFolderOnPC() {
+      if (currentFilePath) openFileOnPC(currentFilePath);
+    }
+
+    // Регистрация Service Worker для PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+mia_stdout.log
+mia_stderr.log
+
+# Build artifacts
+Mia.exe
+MiaInstaller.exe
+
+# Models (too large for git)
+models/
+
+# Memory / personal data
+memory/
+
+# Scratch / temp
+scratch/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Screenshots
+*.png
+!static/**/*.png
+!docs/**/*.png
+
+# Audio test files
+*.mp3
+*.wav
+
+# Sensitive
+.env
+*.secret

@@ -1,0 +1,19 @@
+{
+  "name": "игра",
+  "enabled": true,
+  "description": "Запускает Steam и переключает ПК в игровой режим",
+  "trigger": {
+    "type": "voice",
+    "phrase": "я хочу поиграть"
+  },
+  "actions": [
+    {
+      "type": "open_program",
+      "path": "steam"
+    },
+    {
+      "type": "speak",
+      "text": "Активирую игровой режим! Запускаю Steam. Приятной игры! 🎮"
+    }
+  ]
+}
