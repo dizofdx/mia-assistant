@@ -1,0 +1,20 @@
+{
+  "name": "отдых",
+  "enabled": true,
+  "trigger": {
+    "type": "manual"
+  },
+  "actions": [
+    {
+      "type": "open_website",
+      "url": "https://www.youtube.com"
+    },
+    {
+      "type": "play_music"
+    },
+    {
+      "type": "speak",
+      "text": "Включаю режим отдыха! Открываю YouTube и запускаю Мою Волну в Яндекс Музыке. Приятного отдыха!"
+    }
+  ]
+}

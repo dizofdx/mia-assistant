@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Мия — Голосовой ИИ-ассистент для Windows</title>
+  <meta name="description" content="Мия — персональный ИИ-ассистент с голосовым управлением, Telegram-ботом, веб-панелью и аниме-стилем.">
+  <meta property="og:title" content="Мия — AI Assistant">
+  <meta property="og:description" content="Голосовой ИИ-компаньон для Windows с Telegram-ботом, управлением ПК и веб-панелью Astra.">
+  <meta property="og:image" content="avatar.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="icon-192.png">
+
+  <!-- Шрифты -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #050508;
+      --surface: rgba(18, 18, 28, 0.7);
+      --surface-hover: rgba(26, 26, 40, 0.85);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-glow: rgba(203, 166, 247, 0.3);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --primary: #cba6f7;
+      --primary-glow: rgba(203, 166, 247, 0.4);
+      --cyan: #89b4fa;
+      --cyan-glow: rgba(137, 180, 250, 0.35);
+      --green: #a6e3a1;
+      --pink: #f38ba8;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* === ANIMATED BACKGROUND === */
+    .bg-glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 600px 400px at 20% 30%, rgba(203,166,247,0.08), transparent 70%),
+        radial-gradient(ellipse 500px 500px at 80% 60%, rgba(137,180,250,0.06), transparent 70%),
+        radial-gradient(ellipse 400px 300px at 50% 80%, rgba(243,139,168,0.04), transparent 70%);
+      animation: glowShift 20s ease-in-out infinite alternate;
+    }
+    @keyframes glowShift {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+
+    .particles {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    }
+    .particle {
+      position: absolute;
+      width: 2px; height: 2px;
+      background: rgba(203,166,247,0.4);
+      border-radius: 50%;
+      animation: float linear infinite;
+    }
+    @keyframes float {
+      0% { transform: translateY(100vh) scale(0); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+    }
+
+    /* === LAYOUT === */
+    .container {
+      position: relative; z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* === NAV === */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      backdrop-filter: blur(20px) saturate(1.8);
+      -webkit-backdrop-filter: blur(20px) saturate(1.8);
+      background: rgba(5,5,8,0.7);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      height: 60px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: 18px; color: var(--primary);
+      text-decoration: none;
+    }
+    .nav-logo img { width: 32px; height: 32px; border-radius: 8px; }
+    .nav-links { display: flex; gap: 28px; list-style: none; }
+    .nav-links a {
+      color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--primary); }
+    .nav-cta {
+      padding: 8px 20px; border-radius: 10px; font-size: 13px; font-weight: 600;
+      background: linear-gradient(135deg, var(--primary), #a78bfa);
+      color: #0a0a0a; text-decoration: none; border: none; cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .nav-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--primary-glow);
+    }
+
+    /* === HERO === */
+    .hero {
+      padding: 140px 0 80px;
+      text-align: center;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      background: rgba(166,227,161,0.1); color: var(--green);
+      border: 1px solid rgba(166,227,161,0.2);
+      margin-bottom: 24px; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .hero-badge::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.5); }
+    }
+    .hero h1 {
+      font-size: clamp(40px, 6vw, 72px); font-weight: 900; line-height: 1.05;
+      letter-spacing: -0.03em; margin-bottom: 20px;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--cyan) 50%, var(--pink) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 18px; color: var(--text-muted); max-width: 600px;
+      line-height: 1.7; margin-bottom: 36px;
+    }
+    .hero-buttons { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+    .btn-primary {
+      padding: 14px 32px; border-radius: 12px; font-size: 15px; font-weight: 700;
+      background: linear-gradient(135deg, var(--primary), #a78bfa);
+      color: #0a0a0a; text-decoration: none; border: none; cursor: pointer;
+      transition: all 0.25s; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px var(--primary-glow);
+    }
+    .btn-outline {
+      padding: 14px 32px; border-radius: 12px; font-size: 15px; font-weight: 600;
+      background: transparent; color: var(--text);
+      border: 1px solid rgba(255,255,255,0.15); text-decoration: none; cursor: pointer;
+      transition: all 0.25s; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-outline:hover {
+      border-color: var(--primary);
+      background: rgba(203,166,247,0.05);
+    }
+
+    /* === AVATAR === */
+    .hero-avatar {
+      margin-top: 48px; position: relative;
+    }
+    .hero-avatar img {
+      width: 280px; height: 280px; border-radius: 24px;
+      border: 2px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 80px rgba(203,166,247,0.1);
+      transition: transform 0.4s;
+    }
+    .hero-avatar img:hover { transform: scale(1.03) rotate(-1deg); }
+    .hero-avatar::after {
+      content: '';
+      position: absolute; inset: -20px; border-radius: 40px;
+      background: radial-gradient(circle, rgba(203,166,247,0.12) 0%, transparent 70%);
+      z-index: -1;
+    }
+
+    /* === FEATURES GRID === */
+    .section { padding: 80px 0; }
+    .section-title {
+      font-size: 36px; font-weight: 800; text-align: center;
+      margin-bottom: 12px; letter-spacing: -0.02em;
+    }
+    .section-sub {
+      text-align: center; color: var(--text-muted); font-size: 16px;
+      max-width: 500px; margin: 0 auto 48px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      transition: all 0.3s;
+      position: relative; overflow: hidden;
+    }
+    .feature-card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+    }
+    .feature-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+    /* Icon colors */
+    .icon-voice { background: rgba(203,166,247,0.12); }
+    .icon-web { background: rgba(137,180,250,0.12); }
+    .icon-tg { background: rgba(166,227,161,0.12); }
+    .icon-music { background: rgba(243,139,168,0.12); }
+    .icon-scenario { background: rgba(250,179,135,0.12); }
+    .icon-map { background: rgba(148,226,213,0.12); }
+
+    /* === TECH STACK === */
+    .tech-pills {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      justify-content: center; margin-top: 32px;
+    }
+    .pill {
+      padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: 500;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text-muted); transition: all 0.2s;
+    }
+    .pill:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* === SCREENSHOT === */
+    .screenshot-wrap {
+      text-align: center; margin-top: 48px;
+    }
+    .screenshot-wrap img {
+      max-width: 100%; border-radius: 16px;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+
+    /* === INSTALL === */
+    .install-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .install-card h2 { font-size: 28px; font-weight: 800; margin-bottom: 12px; }
+    .install-card p { color: var(--text-muted); margin-bottom: 24px; font-size: 15px; line-height: 1.7; }
+    .code-block {
+      background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 20px; font-family: 'Courier New', monospace;
+      font-size: 14px; color: var(--cyan); text-align: left;
+      margin: 20px 0; overflow-x: auto; line-height: 1.8;
+    }
+    .code-block .comment { color: var(--text-dim); }
+
+    /* === FOOTER === */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0; text-align: center;
+      color: var(--text-dim); font-size: 13px;
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* === RESPONSIVE === */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .hero { padding: 120px 0 60px; }
+      .hero-avatar img { width: 200px; height: 200px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .install-card { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-glow"></div>
+  <div class="particles" id="particles"></div>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <img src="icon-192.png" alt="Мия">
+        Мия AI
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Возможности</a></li>
+        <li><a href="#tech">Технологии</a></li>
+        <li><a href="#install">Установка</a></li>
+      </ul>
+      <a href="https://github.com/" class="nav-cta" id="github-link">⭐ GitHub</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">Бета-версия · Open Source</div>
+      <h1>
+        Твой персональный<br>
+        <span class="gradient">ИИ-ассистент</span>
+      </h1>
+      <p class="hero-sub">
+        Мия — голосовой ИИ-компаньон для Windows с аниме-стилем.
+        Управляй ПК голосом, слушай музыку, общайся через Telegram — всё в одном.
+      </p>
+      <div class="hero-buttons">
+        <a href="#install" class="btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Скачать
+        </a>
+        <a href="#features" class="btn-outline">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          Подробнее
+        </a>
+      </div>
+      <div class="hero-avatar">
+        <img src="avatar.png" alt="Мия — ИИ-ассистент">
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <h2 class="section-title">Что умеет Мия?</h2>
+      <p class="section-sub">Голосовое управление, автоматизация и развлечения — всё в одном приложении</p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon icon-voice">🎙️</div>
+          <h3>Голосовое управление</h3>
+          <p>Скажи «Мия» — и она услышит. Распознавание речи Vosk + голос Silero TTS. Работает полностью офлайн.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon icon-web">🌐</div>
+          <h3>Веб-панель Astra</h3>
+          <p>Красивый веб-интерфейс с системным мониторингом, чатом, картой, управлением сценариями и 3D-аватаром.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon icon-tg">🤖</div>
+          <h3>Telegram-бот</h3>
+          <p>Управляй ПК из любой точки мира. Скриншоты, голосовые сообщения, команды — всё через Telegram.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon icon-music">🎵</div>
+          <h3>Музыка и медиа</h3>
+          <p>Яндекс Музыка, YouTube, управление плеером — пауза, переключение треков, громкость голосом.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon icon-scenario">⚡</div>
+          <h3>Сценарии и автоматизация</h3>
+          <p>Создавай сценарии: «Отдых» откроет YouTube + запустит музыку. «Фокус» включит lo-fi для работы.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon icon-map">🗺️</div>
+          <h3>Карта и погода</h3>
+          <p>Интерактивная карта MapLibre GL с поиском городов и метеостанцией в реальном времени.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH -->
+  <section class="section" id="tech">
+    <div class="container">
+      <h2 class="section-title">Технологии</h2>
+      <p class="section-sub">Построена на современных Python-инструментах</p>
+      <div class="tech-pills">
+        <span class="pill">🐍 Python 3.11</span>
+        <span class="pill">⚡ FastAPI</span>
+        <span class="pill">🧠 Google Gemini AI</span>
+        <span class="pill">🎤 Vosk STT</span>
+        <span class="pill">🔊 Silero TTS v4</span>
+        <span class="pill">🤖 Telegram Bot API</span>
+        <span class="pill">🗺️ MapLibre GL</span>
+        <span class="pill">📱 PWA / Android</span>
+        <span class="pill">🖥️ PyAutoGUI</span>
+        <span class="pill">🎵 Media Control</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section class="section" id="install">
+    <div class="container">
+      <div class="install-card">
+        <h2>🚀 Быстрая установка</h2>
+        <p>Клонируй репозиторий, установи зависимости и запусти Мию за 2 минуты</p>
+        <div class="code-block">
+          <span class="comment"># Клонируй репозиторий</span><br>
+          git clone https://github.com/YOUR_USERNAME/mia-assistant.git<br>
+          cd mia-assistant<br><br>
+          <span class="comment"># Установи зависимости</span><br>
+          pip install -r requirements.txt<br><br>
+          <span class="comment"># Запусти Мию</span><br>
+          python main.py
+        </div>
+        <a href="https://github.com/" class="btn-primary" id="github-link-2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Открыть на GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <p>© 2024–2026 <a href="#">Мия AI</a> — Голосовой ИИ-ассистент. Сделано с 💜</p>
+    </div>
+  </footer>
+
+  <!-- Particles -->
+  <script>
+    const particlesEl = document.getElementById('particles');
+    for (let i = 0; i < 30; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (8 + Math.random() * 12) + 's';
+      p.style.animationDelay = Math.random() * 10 + 's';
+      p.style.width = p.style.height = (1 + Math.random() * 2) + 'px';
+      particlesEl.appendChild(p);
+    }
+  </script>
+</body>
+</html>

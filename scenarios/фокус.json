@@ -1,0 +1,17 @@
+{
+  "name": "фокус",
+  "enabled": true,
+  "trigger": {
+    "type": "manual"
+  },
+  "actions": [
+    {
+      "type": "open_website",
+      "url": "https://www.youtube.com/watch?v=jfKfPfyJRdk"
+    },
+    {
+      "type": "speak",
+      "text": "Включаю режим фокуса! Запускаю расслабляющую лофай музыку. Сфокусируйся на делах, я рядом!"
+    }
+  ]
+}

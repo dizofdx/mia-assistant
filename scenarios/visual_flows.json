@@ -1,0 +1,237 @@
+[
+  {
+    "id": "youtube_lofi",
+    "name": "Открыть YouTube и включить lo-fi",
+    "category": "Медиа",
+    "icon": "youtube",
+    "description": "Открывает YouTube в браузере, вводит поиск lofi и запускает музыку",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "trigger",
+        "subType": "hotkey",
+        "title": "Хоткей",
+        "value": "Alt + Y",
+        "voicePhrase": "открой ютуб",
+        "x": 60,
+        "y": 140
+      },
+      {
+        "id": "node_2",
+        "type": "action",
+        "subType": "open_url",
+        "title": "Открыть URL",
+        "value": "https://www.youtube.com/results?search_query=lofi+hip+hop",
+        "x": 340,
+        "y": 140
+      },
+      {
+        "id": "node_3",
+        "type": "action",
+        "subType": "speak",
+        "title": "Голос Мии",
+        "value": "Открываю YouTube с расслабляющей музыкой lo-fi!",
+        "x": 620,
+        "y": 140
+      }
+    ],
+    "edges": [
+      {
+        "from": "node_1",
+        "to": "node_2"
+      },
+      {
+        "from": "node_2",
+        "to": "node_3"
+      }
+    ]
+  },
+  {
+    "id": "yandex_wave",
+    "name": "Включить Мою Волну",
+    "category": "Медиа",
+    "icon": "music",
+    "description": "Запускает Яндекс Музыку и активирует персональную Мою Волну",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "trigger",
+        "subType": "voice",
+        "title": "Голос",
+        "value": "моя волна",
+        "voicePhrase": "включи мою волну",
+        "x": 60,
+        "y": 140
+      },
+      {
+        "id": "node_2",
+        "type": "action",
+        "subType": "yandex_wave",
+        "title": "Моя Волна",
+        "value": "play_wave",
+        "x": 340,
+        "y": 140
+      },
+      {
+        "id": "node_3",
+        "type": "action",
+        "subType": "speak",
+        "title": "Голос Мии",
+        "value": "Включаю твою любимую Мою Волну!",
+        "x": 620,
+        "y": 140
+      }
+    ],
+    "edges": [
+      {
+        "from": "node_1",
+        "to": "node_2"
+      },
+      {
+        "from": "node_2",
+        "to": "node_3"
+      }
+    ]
+  },
+  {
+    "id": "focus_mode",
+    "name": "Режим фокуса (Pomodoro)",
+    "category": "Фокус",
+    "icon": "zap",
+    "description": "Сворачивает лишние окна, включает тишину и сообщает о старте работы",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "trigger",
+        "subType": "hotkey",
+        "title": "Хоткей",
+        "value": "Ctrl + Shift + F",
+        "voicePhrase": "режим фокуса",
+        "x": 60,
+        "y": 140
+      },
+      {
+        "id": "node_2",
+        "type": "action",
+        "subType": "minimize_all",
+        "title": "Свернуть все окна",
+        "value": "minimize",
+        "x": 340,
+        "y": 80
+      },
+      {
+        "id": "node_3",
+        "type": "action",
+        "subType": "speak",
+        "title": "Голос Мии",
+        "value": "Режим фокуса активирован. Никаких отвлечений на двадцать пять минут!",
+        "x": 620,
+        "y": 140
+      }
+    ],
+    "edges": [
+      {
+        "from": "node_1",
+        "to": "node_2"
+      },
+      {
+        "from": "node_2",
+        "to": "node_3"
+      }
+    ]
+  },
+  {
+    "id": "lock_pc",
+    "name": "Заблокировать компьютер",
+    "category": "Система",
+    "icon": "lock",
+    "description": "Быстро блокирует экран рабочего стола Windows",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "trigger",
+        "subType": "voice",
+        "title": "Голос",
+        "value": "заблокируй пк",
+        "voicePhrase": "заблокируй пк",
+        "x": 60,
+        "y": 140
+      },
+      {
+        "id": "node_2",
+        "type": "action",
+        "subType": "lock_screen",
+        "title": "Блокировка",
+        "value": "lock",
+        "x": 340,
+        "y": 140
+      },
+      {
+        "id": "node_3",
+        "type": "action",
+        "subType": "speak",
+        "title": "Голос Мии",
+        "value": "Компьютер заблокирован.",
+        "x": 620,
+        "y": 140
+      }
+    ],
+    "edges": [
+      {
+        "from": "node_1",
+        "to": "node_2"
+      },
+      {
+        "from": "node_2",
+        "to": "node_3"
+      }
+    ]
+  },
+  {
+    "id": "game_mode",
+    "name": "Игровой режим (Steam)",
+    "category": "Игры",
+    "icon": "gamepad",
+    "description": "Запускает Steam и переключает ассистента в игровой режим",
+    "nodes": [
+      {
+        "id": "node_1",
+        "type": "trigger",
+        "subType": "voice",
+        "title": "Голос",
+        "value": "я хочу поиграть",
+        "voicePhrase": "я хочу поиграть",
+        "x": 60,
+        "y": 140
+      },
+      {
+        "id": "node_2",
+        "type": "action",
+        "subType": "open_app",
+        "title": "Запуск программы",
+        "value": "steam",
+        "x": 340,
+        "y": 140
+      },
+      {
+        "id": "node_3",
+        "type": "action",
+        "subType": "speak",
+        "title": "Голос Мии",
+        "value": "Активирую игровой режим! Запускаю Steam. Приятной игры!",
+        "x": 620,
+        "y": 140
+      }
+    ],
+    "edges": [
+      {
+        "from": "node_1",
+        "to": "node_2"
+      },
+      {
+        "from": "node_2",
+        "to": "node_3"
+      }
+    ]
+  }
+]
