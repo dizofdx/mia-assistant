@@ -719,12 +719,28 @@ def create_app(assistant):
 
     return app
 
+def is_port_available(port: int, host: str = "0.0.0.0") -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+            return True
+    except OSError:
+        return False
+
 async def start_web(assistant):
+    selected_port = None
     for port in [8000, 8001, 8080]:
-        try:
-            config = uvicorn.Config(create_app(assistant), host="0.0.0.0", port=port, log_level="warning")
-            server = uvicorn.Server(config)
-            await server.serve()
+        if is_port_available(port):
+            selected_port = port
             break
-        except Exception as e:
-            print(f"[WebPanel] Не удалось запустить веб-панель на порту {port}: {e}")
+    if not selected_port:
+        print("[WebPanel] Все веб-порты (8000, 8001, 8080) заняты!")
+        return
+
+    try:
+        config = uvicorn.Config(create_app(assistant), host="0.0.0.0", port=selected_port, log_level="warning")
+        server = uvicorn.Server(config)
+        await server.serve()
+    except (Exception, SystemExit, BaseException) as e:
+        print(f"[WebPanel] Ошибка работы веб-сервера на порту {selected_port}: {e}")
