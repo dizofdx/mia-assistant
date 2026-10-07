@@ -25,7 +25,6 @@ mia_stderr.log
 
 # Build artifacts
 Mia.exe
-MiaInstaller.exe
 
 # Models (too large for git)
 models/
