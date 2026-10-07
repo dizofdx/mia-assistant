@@ -13,7 +13,7 @@ class HotwordListener:
         self.thread = None
         self.sample_rate = 16000
         self.block_size = 1024
-        self.threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.015)
+        self.threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0035)
         self.wake_names = getattr(self.cfg, "HOTWORD_NAMES", ["мия", "миечка", "мика", "mia"])
         self.active_listening_until = 0.0
         os.makedirs("memory", exist_ok=True)
@@ -90,7 +90,7 @@ class HotwordListener:
                                     dtype='float32', blocksize=self.block_size) as stream:
                     pre_buffer = []  # кольцевой буфер 0.35 сек до начала фразы
                     max_pre = max(1, int(self.sample_rate * float(getattr(self.cfg, "HOTWORD_PRE_ROLL_MS", 350)) / 1000 / self.block_size))
-                    base_threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.009)
+                    base_threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0035)
                     vad_enabled = bool(getattr(self.cfg, "HOTWORD_VAD_ENABLED", True))
                     vad = EnergyVAD(
                         sample_rate=self.sample_rate,
@@ -202,11 +202,10 @@ class HotwordListener:
                                             self.active_listening_until = 0.0
                                             self.a._spawn(self.a.handle_user_message(cmd, speak=True, source="voice"))
                                         else:
-                                            # Просто позвали "Мия" -> неблокирующий сигнал и быстрый ответ
-                                            if not getattr(self.a, "is_muted", False):
-                                                self.a.voice.play_cue_sync("wake", wait=False)
+                                            # Просто позвали "Мия" -> звуковой сигнал и бодрый голосовой ответ
                                             async def _respond_and_arm():
                                                 if not getattr(self.a, "is_muted", False):
+                                                    await self.a.voice.play_cue("wake", wait=True)
                                                     await self.a.voice.speak("Да, я слушаю!")
                                                 self.active_listening_until = time.time() + 8.0
 

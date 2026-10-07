@@ -379,10 +379,16 @@ class Voice:
                 model = torch.package.PackageImporter(model_path).load_pickle("tts_models", "model")
                 model.to(device)
                 self._silero_model = model
-
-                # Предварительный прогрев и кэширование типовых фраз для 0 мс мгновенного отклика:
+                self._silero_ready = True
                 spk = getattr(self.cfg, "SILERO_SPEAKER", "xenia")
                 sr = getattr(self.cfg, "SILERO_SAMPLE_RATE", 24000)
+
+                try:
+                    print(f"[Silero] TTS ready (fast 24kHz mode)! Speaker: {spk}")
+                except Exception:
+                    pass
+
+                # Предварительный прогрев и кэширование типовых фраз для 0 мс мгновенного отклика:
                 try:
                     with torch.inference_mode():
                         _ = model.apply_tts(text="Мия", speaker=spk, sample_rate=sr, put_accent=False, put_yo=False)
@@ -415,13 +421,6 @@ class Voice:
                         self._phrase_cache[(p, spk, sr)] = self._phrase_cache[key]
                     except Exception:
                         pass
-
-                self._silero_ready = True
-
-                try:
-                    print(f"[Silero] TTS ready (fast 24kHz mode)! Speaker: {spk}")
-                except Exception:
-                    pass
             except Exception as e:
                 try:
                     import traceback
@@ -547,7 +546,7 @@ class Voice:
             engine = getattr(self.cfg, "TTS_ENGINE", "silero")
             if engine == "silero":
                 # 1. Сначала локальный Silero (офлайн, мгновенно)
-                for _ in range(60):
+                for _ in range(120):
                     if self._silero_ready:
                         break
                     await asyncio.sleep(0.1)

@@ -76,9 +76,9 @@ WHISPER_AGC_MAX_GAIN = 3.0
 # === ГОЛОСОВАЯ АКТИВАЦИЯ ПО ИМЕНИ ("МИЯ") ===
 HOTWORD_ENABLED = True                       # слушать микрофон ПК в фоне
 HOTWORD_NAMES   = ["мия", "миечка", "мика", "mia", "миа", "мию", "мие", "miya"]  # имя для активации
-HOTWORD_ENERGY_THRESHOLD = 0.009             # оптимизированный порог активации (отсекает шум ПК, слышит человеческий голос)
+HOTWORD_ENERGY_THRESHOLD = 0.0035            # оптимизированный порог активации (отсекает шум, слышит голос)
 HOTWORD_VAD_ENABLED = True
-HOTWORD_VAD_NOISE_MULTIPLIER = 2.5
+HOTWORD_VAD_NOISE_MULTIPLIER = 1.8
 HOTWORD_VAD_SILENCE_MULTIPLIER = 1.35
 HOTWORD_VAD_MIN_SPEECH_MS = 100
 HOTWORD_VAD_MIN_SILENCE_MS = 500

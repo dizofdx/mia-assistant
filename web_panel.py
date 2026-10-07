@@ -720,5 +720,11 @@ def create_app(assistant):
     return app
 
 async def start_web(assistant):
-    config = uvicorn.Config(create_app(assistant), host="0.0.0.0", port=8000, log_level="warning")
-    await uvicorn.Server(config).serve()
+    for port in [8000, 8001, 8080]:
+        try:
+            config = uvicorn.Config(create_app(assistant), host="0.0.0.0", port=port, log_level="warning")
+            server = uvicorn.Server(config)
+            await server.serve()
+            break
+        except Exception as e:
+            print(f"[WebPanel] Не удалось запустить веб-панель на порту {port}: {e}")

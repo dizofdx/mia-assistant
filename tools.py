@@ -153,7 +153,8 @@ class Tools:
                 user32.EnumWindows(DESKTOPENUMPROC(cb), 0)
 
             if found_hwnd:
-                cur_tid = user32.GetCurrentThreadId()
+                kernel32 = ctypes.windll.kernel32
+                cur_tid = kernel32.GetCurrentThreadId()
                 fore_hwnd = user32.GetForegroundWindow()
                 fore_tid = user32.GetWindowThreadProcessId(fore_hwnd, None) if fore_hwnd else 0
                 if fore_tid and fore_tid != cur_tid:
