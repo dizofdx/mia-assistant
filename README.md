@@ -42,7 +42,7 @@
 
 ```bash
 # 1. Клонируй репозиторий
-git clone https://github.com/YOUR_USERNAME/mia-assistant.git
+git clone https://github.com/dizofdx/mia-assistant.git
 cd mia-assistant
 
 # 2. Установи зависимости
