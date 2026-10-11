@@ -43,9 +43,19 @@ if sys.platform == "win32":
             _u32.SetThreadDesktop(_hdesk)
     except Exception:
         pass
-
 import asyncio
-import config as cfg
+try:
+    import config as cfg
+except ModuleNotFoundError:
+    _example_cfg = os.path.join(os.path.dirname(__file__), "config.example.py")
+    _target_cfg = os.path.join(os.path.dirname(__file__), "config.py")
+    if os.path.exists(_example_cfg) and not os.path.exists(_target_cfg):
+        import shutil
+        print("[!] config.py не найден. Создаю config.py из шаблона config.example.py...")
+        shutil.copy(_example_cfg, _target_cfg)
+        import config as cfg
+    else:
+        raise
 from memory import Memory
 from tools import Tools
 from brain import Brain

@@ -50,5 +50,6 @@ Desktop.ini
 *.wav
 
 # Sensitive
+config.py
 .env
 *.secret
