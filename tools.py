@@ -32,7 +32,7 @@ TOOLS_SPEC = [
      "description": "Запомнить важный факт о пользователе навсегда",
      "parameters": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}}},
     {"type": "function", "function": {"name": "open_website", "description": "Открыть сайт в браузере", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
-    {"type": "function", "function": {"name": "open_program", "description": "Запустить программу по пути .exe или .bat", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
+    {"type": "function", "function": {"name": "open_program", "description": "Запустить программу по названию, ярлыку, системному алиасу (steam, telegram, calc и др.) или пути .exe/.bat", "parameters": {"type": "object", "properties": {"target": {"type": "string", "description": "Название или путь программы"}, "path": {"type": "string", "description": "Путь к программе"}}, "required": []}}},
     {"type": "function", "function": {"name": "shutdown_pc", "description": "Выключить ПК через N минут", "parameters": {"type": "object", "properties": {"minutes": {"type": "integer", "default": 2}}}}},
     {"type": "function", "function": {"name": "cancel_shutdown", "description": "Отменить выключение ПК", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "take_screenshot", "description": "Сделать скриншот экрана ПК и отправить пользователю", "parameters": {"type": "object", "properties": {}}}},
@@ -46,7 +46,7 @@ TOOLS_SPEC = [
     {"type": "function", "function": {"name": "media_control", "description": "Управление музыкой и медиа на ПК. Можно указать player: yandex, spotify, aimp, foobar, browser или auto. Действия: play_pause, play, pause, next, prev, stop, mute", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "player": {"type": "string"}}, "required": ["action"]}}},
     {"type": "function", "function": {"name": "media_status", "description": "Показать доступные локальные и браузерные плееры и определить, какие из них запущены", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "open_media_player", "description": "Открыть поддерживаемый плеер (spotify, aimp, foobar, yandex или browser) безопасным способом", "parameters": {"type": "object", "properties": {"player": {"type": "string"}}, "required": ["player"]}}},
-    {"type": "function", "function": {"name": "play_yandex_music", "description": "Включить Яндекс Музыку на ПК и запустить воспроизведение «Моей Волны» или треков. Вызывай при просьбе включить музыку, яндекс музыку, мою волну, треки или песню.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "play_yandex_music", "description": "Включить Яндекс Музыку на ПК и запустить воспроизведение «Моей Волны» или треков. Вызывай при просьбе включить музыку, яндекс музыку, мою волну, треки или песню.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "default": "моя волна"}}}}},
     {"type": "function", "function": {"name": "like_track", "description": "Поставить лайк играющему треку в Яндекс Музыке", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "get_weather", "description": "Узнать прогноз погоды (как в Алисе) по городу или текущему месту", "parameters": {"type": "object", "properties": {"city": {"type": "string", "default": ""}}}}},
     {"type": "function", "function": {"name": "search_youtube", "description": "Найти видео, клип или музыку на YouTube в браузере", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}},
@@ -225,8 +225,9 @@ class Tools:
         except Exception as e:
             return f"Не удалось запустить Steam: {e}"
 
-    def tool_open_program(self, target):
+    def tool_open_program(self, target=None, path=None, **kwargs):
         """Универсальный запуск любых программ на ПК: по названию, ярлыку, протоколу или пути."""
+        target = target or path or kwargs.get("program") or kwargs.get("name")
         if not target:
             return "Укажи название программы или путь."
         raw = str(target).strip()
@@ -503,14 +504,31 @@ class Tools:
     def tool_run_scenario(self, name):
         # Normalise the incoming name: strip whitespace and lower‑case for robust matching
         clean_name = name.lower().strip()
-        # Try to fetch by the normalised name first, then fall back to the original
-        s = self.a.scenarios.get(clean_name) or self.a.scenarios.get(name)
-        if not s:
-            available = [x.get("name") for x in self.a.scenarios.list_all() if x.get("name")]
-            return f"Сценарий '{name}' не найден. Доступные сценарии: {', '.join(available)}"
-        real_name = s.get("name")
-        self.a.run_scenario_async(real_name)
-        return f"Сценарий '{real_name}' успешно запущен."
+        # 1. Поиск в классических сценариях
+        if hasattr(self.a, "scenarios") and self.a.scenarios:
+            s = self.a.scenarios.get(clean_name) or self.a.scenarios.get(name)
+            if s:
+                real_name = s.get("name")
+                self.a.run_scenario_async(real_name)
+                return f"Сценарий '{real_name}' успешно запущен."
+        # 2. Поиск в визуальных командах Astra
+        if hasattr(self.a, "vc_manager") and self.a.vc_manager:
+            for flow in self.a.vc_manager.list_flows():
+                f_id = (flow.get("id") or "").lower()
+                f_name = (flow.get("name") or "").lower()
+                if clean_name in (f_id, f_name) or f_name in clean_name or clean_name in f_name:
+                    real_id = flow.get("id")
+                    if hasattr(self.a, "loop") and self.a.loop:
+                        import asyncio
+                        asyncio.run_coroutine_threadsafe(self.a.vc_manager.execute_flow(real_id), self.a.loop)
+                    return f"Визуальная команда '{flow.get('name')}' успешно запущена."
+
+        available = []
+        if hasattr(self.a, "scenarios") and self.a.scenarios:
+            available.extend([x.get("name") for x in self.a.scenarios.list_all() if x.get("name")])
+        if hasattr(self.a, "vc_manager") and self.a.vc_manager:
+            available.extend([x.get("name") for x in self.a.vc_manager.list_flows() if x.get("name")])
+        return f"Сценарий или команда '{name}' не найдены. Доступные: {', '.join(set(available))}"
 
     def tool_delete_scenario(self, name: str):
         """Удаляет сценарий или визуальную команду по имени или ID."""
@@ -795,8 +813,15 @@ class Tools:
 
     def tool_play_yandex_music(self, query="моя волна"):
         """Включает музыку на ПК без навязчивого открытия и изменения окон (мгновенный запуск)."""
-        import os, subprocess, threading, time, webbrowser, psutil, ctypes
+        import os, subprocess, threading, time, webbrowser, psutil, ctypes, urllib.parse
         u = ctypes.windll.user32
+        q = (query or "").strip()
+        is_wave = q.lower() in ("", "моя волна", "моей волны", "волну", "волна")
+
+        if not is_wave:
+            url = f"https://music.yandex.ru/search?text={urllib.parse.quote(q)}"
+            self.tool_open_website(url)
+            return f"Ищу и включаю «{q}» в Яндекс Музыке! 🎵"
 
         def _bg_launch():
             try:
@@ -972,10 +997,14 @@ class Tools:
                 code = blocks[0]
         code = code.strip()
 
-        # Сохраняем в projects/
+        # Сохраняем в projects/ с изоляцией в песочнице (Sandbox Isolation)
         projects = getattr(cfg, "PROJECTS_DIR", "projects")
         os.makedirs(projects, exist_ok=True)
-        filepath = os.path.join(projects, filename)
+        safe_name = os.path.basename(filename)
+        projects_abs = os.path.abspath(projects)
+        filepath = os.path.abspath(os.path.join(projects_abs, safe_name))
+        if not filepath.startswith(projects_abs):
+            filepath = os.path.join(projects_abs, safe_name)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(code)
 
@@ -985,6 +1014,11 @@ class Tools:
 
     def tool_run_command(self, command):
         """Выполняет команду в терминале. Таймаут 60 сек с поддержкой русских кодировок."""
+        cmd_low = str(command or "").lower().strip()
+        blocked_commands = {"format", "vssadmin", "bcdedit", "diskpart", "del /f /s /q c:", "rmdir /s /q c:"}
+        if any(b in cmd_low for b in blocked_commands):
+            return "Выполнение данной команды заблокировано политикой безопасности."
+
         try:
             result = subprocess.run(
                 command, shell=True, capture_output=True,

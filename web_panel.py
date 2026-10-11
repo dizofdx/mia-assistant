@@ -327,7 +327,7 @@ def create_app(assistant):
     @app.get("/api/screenshot")
     async def take_screenshot_api():
         try:
-            path = await asyncio.to_thread(assistant.tools.tool_take_screenshot)
+            path = await asyncio.to_thread(assistant.tools.tool_screenshot)
             if path and os.path.exists(path):
                 return {"ok": True, "path": path}
             return {"ok": False, "error": "Не удалось создать скриншот"}
@@ -622,6 +622,12 @@ def create_app(assistant):
         if voice not in allowed_voices:
             voice = "baya"
         assistant.cfg.SILERO_SPEAKER = voice
+        if hasattr(assistant, "voice") and hasattr(assistant.voice, "set_speaker"):
+            assistant.voice.set_speaker(voice)
+        elif hasattr(assistant, "voice"):
+            rev = {"xenia": "anime", "aidar": "jarvis", "baya": "mia"}
+            if voice in rev:
+                assistant.voice.profile = rev[voice]
         return {"ok": True, "voice": voice}
 
     @app.post("/api/test_say")
@@ -790,8 +796,8 @@ def create_app(assistant):
             try:
                 txt = assistant.tools.tool_get_weather(city or "")
                 return {"ok": True, "city": city or "Погода", "temp": "", "desc": txt}
-            except Exception:
-                return {"ok": False, "error": str(e)}
+            except Exception as e_inner:
+                return {"ok": False, "error": str(e_inner)}
 
     return app
 

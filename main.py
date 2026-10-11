@@ -63,6 +63,7 @@ from voice import Voice
 from voice_input import Ears
 from avatar import Avatar
 from scenarios import ScenarioEngine
+from visual_commands import VisualCommandManager
 from tg_bot import TGBot
 from web_panel import start_web
 from hotword import HotwordListener
@@ -80,6 +81,7 @@ class Assistant:
         self.ears = Ears(cfg)
         self.avatar = Avatar(cfg)
         self.scenarios = ScenarioEngine(self)
+        self.vc_manager = VisualCommandManager(self)
         self.tg = TGBot(self)
         self.hotword = HotwordListener(self)
         self.tray = SystemTray(self)

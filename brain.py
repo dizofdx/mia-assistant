@@ -3,11 +3,11 @@ import json, re, random, datetime, os
 from openai import OpenAI
 from tools import TOOLS_SPEC
 
-EMOTION_TAG_RE = re.compile(r'\[\s*([А-ЯЁa-z]+)[^\]]*\]\s*', re.IGNORECASE)
+EMOTION_TAG_RE = re.compile(r'\[\s*(РАДОСТЬ|ГРУСТЬ|СПОКОЙСТВИЕ|ЗЛОСТЬ|УДИВЛЕНИЕ|СМУЩЕНИЕ|EMOTION|JOY|SADNESS|CALM|ANGER)[^\]]*\](?!\()\s*', re.IGNORECASE)
 MIA_PREFIX_RE  = re.compile(r'^(мия|миечка|мика|mia|эй мия|привет мия|слушай мия|меня|мне|миа|мию|мие)[,\s!.-]*', re.IGNORECASE)
 STRIP_PUNCT_RE = re.compile(r'^[,\s!.-]+|[,\s!.-]+$')
 WORDS_RE       = re.compile(r'[a-zA-Zа-яА-ЯёЁ0-9]+')
-BRACKETS_RE    = re.compile(r'\[[^\]]*\]')
+BRACKETS_RE    = re.compile(r'\[\s*(?:радость|грусть|спокойствие|злость|удивление|смущение|смех|вздох|пауза|pause|laughs?|giggles?)\s*\](?!\()', re.IGNORECASE)
 STARS_RE       = re.compile(r'\*[^*]+\*')
 STOP_MARKERS   = ("\nassistant", "\nuser", "\nпользователь:", "<|im_start|>", "<|im_end|>", "assistant [")
 
@@ -364,10 +364,14 @@ class Brain:
             "открой", "запусти", "включи", "вруби", "выключи", "поставь", "найди", "поищи",
             "сделай", "скрин", "закрой", "сверни", "заблокируй", "громче", "тише", "звук",
             "музык", "трек", "песн", "погод", "сценари", "режим", "дипсик", "deepseek",
-            "эксперт", "запомни", "запиши", "код", "напиши", "powershell", "терминал", "пк", "комп",
-            "сайт", "программ", "ютуб", "youtube", "браузер", "вк", "тг", "телеграм"
+            "эксперт", "запомни", "запиши", "код", "напиши", "powershell", "терминал",
+            "сайт", "программ", "ютуб", "youtube", "браузер", "телеграм", "прочитай",
+            "заметк", "список", "файл", "удали", "вставь", "замолчи"
         )
-        has_action_intent = any(kw in user_lower for kw in action_keywords)
+        has_action_intent = (
+            any(kw in user_lower for kw in action_keywords) or
+            bool(re.search(r"\b(пк|комп|вк|тг)\b", user_lower))
+        )
 
         for _ in range(5):
             try:
@@ -375,7 +379,7 @@ class Brain:
                     "model": self.cfg.LLM_MODEL,
                     "messages": msgs,
                     "temperature": 0.4,
-                    "max_tokens": 120,
+                    "max_tokens": 250,
                     "stop": list(STOP_MARKERS),
                     "stream": True
                 }
@@ -386,6 +390,14 @@ class Brain:
                 resp = self.client.chat.completions.create(**call_kwargs)
             except Exception as e_ollama:
                 print(f"[Brain] Ошибка подключения к LLM ({self.cfg.LLM_MODEL}): {e_ollama}")
+                # Резервный переход на облачный DeepSeek эксперт при недоступности локальной Ollama
+                if hasattr(self, "tools") and hasattr(self.tools, "tool_ask_expert_ai"):
+                    try:
+                        expert_reply = self.tools.tool_ask_expert_ai(last_user_msg, on_token=on_token)
+                        if expert_reply and not expert_reply.startswith("Ошибка:"):
+                            return "СПОКОЙСТВИЕ", expert_reply, f"[СПОКОЙСТВИЕ] {expert_reply}"
+                    except Exception as e_exp:
+                        print(f"[Brain Fallback] Ошибка облачного резерва: {e_exp}")
                 err_msg = "Ой, не могу связаться с локальной моделью (Ollama). Убедись, что Ollama запущена!"
                 if on_token:
                     on_token(err_msg)

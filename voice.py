@@ -291,7 +291,20 @@ class Voice:
         }
         return mapping.get(self.profile, self.profile)
 
+    def set_speaker(self, name):
+        """Явно устанавливает спикера озвучки и синхронизирует профиль."""
+        self._custom_speaker = name
+        if hasattr(self, "cfg"):
+            self.cfg.SILERO_SPEAKER = name
+        rev_map = {"xenia": "anime", "aidar": "jarvis", "baya": "mia"}
+        if name in rev_map:
+            self.profile = rev_map[name]
+        return self.get_speaker()
+
     def get_speaker(self):
+        explicit = getattr(self, "_custom_speaker", None)
+        if explicit:
+            return explicit
         spk_map = {
             "anime": "xenia",
             "jarvis": "aidar",

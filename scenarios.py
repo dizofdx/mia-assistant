@@ -127,6 +127,9 @@ class ScenarioEngine:
         elif t == "open_program":
             p = act.get("path", "")
             if not os.path.exists(p):
+                if hasattr(self.a, "tools") and hasattr(self.a.tools, "tool_open_program"):
+                    self.a.tools.tool_open_program(p)
+                    return
                 print(f"[Scenarios] Файл программы не найден: {p}")
                 return
             d = os.path.dirname(p) or None
