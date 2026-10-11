@@ -249,14 +249,21 @@ class VisualCommandManager:
         if not flow:
             return {"ok": False, "error": f"Команда {flow_id} не найдена"}
 
-        nodes_by_id = {n["id"]: n for n in flow.get("nodes", [])}
-        edges = flow.get("edges", [])
+        nodes_by_id = {}
+        for i, n in enumerate(flow.get("nodes", [])):
+            if not isinstance(n, dict):
+                continue
+            nid = n.get("id") or f"node_{i+1}"
+            n["id"] = nid
+            nodes_by_id[nid] = n
+
+        edges = [e for e in flow.get("edges", []) if isinstance(e, dict)]
 
         # Поиск стартовых узлов (у которых нет входящих ребер)
-        dest_nodes = {e["to"] for e in edges}
-        start_nodes = [n for n in flow.get("nodes", []) if n["id"] not in dest_nodes]
-        if not start_nodes and flow.get("nodes"):
-            start_nodes = [flow["nodes"][0]]
+        dest_nodes = {e.get("to") for e in edges if e.get("to")}
+        start_nodes = [n for n in nodes_by_id.values() if n["id"] not in dest_nodes]
+        if not start_nodes and nodes_by_id:
+            start_nodes = [next(iter(nodes_by_id.values()))]
 
         executed_steps = []
 
@@ -326,7 +333,13 @@ class VisualCommandManager:
                         step_info["result"] = f"Озвучено: {val}"
 
                     elif sub == "powershell":
-                        res = subprocess.run(["powershell", "-NoProfile", "-Command", val], capture_output=True, text=True, timeout=10)
+                        allowed = getattr(getattr(self.assistant, "cfg", None), "ENABLE_POWERSHELL_ACTIONS", False)
+                        if not allowed:
+                            step_info["status"] = "skipped"
+                            step_info["result"] = "Исполнение PowerShell заблокировано политикой безопасности (ENABLE_POWERSHELL_ACTIONS=False)"
+                            executed_steps.append(step_info)
+                            return False
+                        res = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", val], capture_output=True, text=True, timeout=10)
                         step_info["result"] = (res.stdout or res.stderr or "Выполнено").strip()[:200]
 
                     elif sub == "media_control":

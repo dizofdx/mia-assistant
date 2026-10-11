@@ -98,12 +98,18 @@ class ScenarioEngine:
     async def do_action(self, act):
         t = act.get("type")
         if t == "speak":
-            try:
-                await self.a.voice.speak(act["text"])                      # сказать дословно
-            except Exception as e:
-                print(f"[Scenarios] Ошибка озвучки: {e}")
+            txt = act.get("text", "")
+            if txt:
+                try:
+                    await self.a.voice.speak(txt)                      # сказать дословно
+                except Exception as e:
+                    print(f"[Scenarios] Ошибка озвучки: {e}")
         elif t == "say":
-            await self.a.handle_user_message(act["text"])              # ответить "живо" через LLM
+            txt = act.get("text", "")
+            if txt:
+                await self.a.handle_user_message(txt)              # ответить "живо" через LLM
+            else:
+                print("[Scenarios] Действие 'say' пропущено: отсутствует поле 'text'")
         elif t == "open_website":
             url = act.get("url", "")
             if not url.startswith("http"):
@@ -190,7 +196,9 @@ class ScenarioEngine:
             except Exception as e:
                 print(f"[Scenarios] Ошибка запуска музыки: {e}")
         elif t == "emote":
-            await self.a.avatar.set_emotion(act["name"])
+            emo_name = act.get("name") or act.get("emotion") or "СПОКОЙСТВИЕ"
+            if hasattr(self.a, "avatar") and self.a.avatar:
+                await self.a.avatar.set_emotion(emo_name)
         elif t == "wait":
             await asyncio.sleep(act.get("seconds", 1))
 

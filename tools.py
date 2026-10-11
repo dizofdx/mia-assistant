@@ -996,6 +996,10 @@ class Tools:
 
     def tool_read_file(self, path):
         """Читает содержимое файла с поддержкой UTF-8 и CP1251."""
+        norm_path = os.path.abspath(path)
+        base_name = os.path.basename(norm_path).lower()
+        if base_name in ("config.py", ".env") or base_name.endswith(".secret"):
+            return "Доступ к конфиденциальному файлу заблокирован политикой безопасности."
         if not os.path.exists(path):
             return f"Файл не найден: {path}"
         try:
@@ -1016,13 +1020,26 @@ class Tools:
             return f"Ошибка чтения: {e}"
 
     def tool_write_file(self, path, content):
-        """Создаёт или перезаписывает файл."""
-        dirname = os.path.dirname(path)
+        """Создаёт или перезаписывает файл в безопасной директории проектов."""
+        projects_dir = os.path.abspath(getattr(getattr(self, "a", None), "cfg", None) and getattr(self.a.cfg, "PROJECTS_DIR", "projects") or "projects")
+        os.makedirs(projects_dir, exist_ok=True)
+
+        if not os.path.isabs(path):
+            target_path = os.path.abspath(os.path.join(projects_dir, path))
+        else:
+            target_path = os.path.abspath(path)
+
+        # Защита от выхода из песочницы: запрещаем писать за пределы папки projects
+        if not target_path.startswith(projects_dir + os.sep) and target_path != projects_dir:
+            safe_name = os.path.basename(target_path) or "output.txt"
+            target_path = os.path.join(projects_dir, safe_name)
+
+        dirname = os.path.dirname(target_path)
         if dirname:
             os.makedirs(dirname, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(target_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"Файл сохранён: {path} ({len(content)} символов)"
+        return f"Файл сохранён в песочнице проектов: {target_path} ({len(content)} символов)"
 
     def tool_list_files(self, path="projects"):
         """Показывает содержимое папки."""

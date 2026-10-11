@@ -154,9 +154,14 @@ def create_app(assistant):
     @app.post("/api/upload_mascot_2d")
     async def upload_mascot_2d(file: UploadFile = File(...)):
         os.makedirs("static", exist_ok=True)
-        ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
-        path = os.path.join("static", f"custom_mascot_2d{ext}")
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        allowed_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+        if ext not in allowed_exts:
+            raise HTTPException(status_code=415, detail="Поддерживаются только изображения: PNG, JPG, WEBP, GIF")
         content = await file.read()
+        if not content or len(content) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Файл пустой или превышает 20 МБ")
+        path = os.path.join("static", f"custom_mascot_2d{ext}")
         with open(path, "wb") as f:
             f.write(content)
         import time
@@ -523,18 +528,27 @@ def create_app(assistant):
         import zipfile
         if not path or not os.path.exists(path):
             return Response("Файл или папка не найдены", status_code=404)
-        if os.path.isfile(path):
-            filename = os.path.basename(path)
-            return FileResponse(path, filename=filename)
-        elif os.path.isdir(path):
+        norm_path = os.path.abspath(path)
+        base_name = os.path.basename(norm_path).lower()
+
+        # Блокировка попыток скачать конфигурации с секретами, ключами или системными файлами
+        if base_name in ("config.py", ".env") or base_name.endswith(".secret") or any(p.startswith(".") for p in norm_path.split(os.sep)):
+            return Response("Доступ к данному файлу заблокирован политикой безопасности", status_code=403)
+
+        if os.path.isfile(norm_path):
+            filename = os.path.basename(norm_path)
+            return FileResponse(norm_path, filename=filename)
+        elif os.path.isdir(norm_path):
             os.makedirs("memory/temp_zips", exist_ok=True)
-            folder_name = os.path.basename(path.rstrip("\\/")) or "folder"
+            folder_name = os.path.basename(norm_path.rstrip("\\/")) or "folder"
             zip_path = os.path.abspath(f"memory/temp_zips/{folder_name}.zip")
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for root, _, fls in os.walk(path):
+                for root, _, fls in os.walk(norm_path):
                     for f in fls:
+                        if f.lower() in ("config.py", ".env") or f.lower().endswith(".secret"):
+                            continue
                         fp = os.path.join(root, f)
-                        arcname = os.path.relpath(fp, path)
+                        arcname = os.path.relpath(fp, norm_path)
                         try:
                             zf.write(fp, arcname)
                         except Exception:
@@ -548,11 +562,12 @@ def create_app(assistant):
         if not target_path or not os.path.exists(target_path):
             return {"ok": False, "error": f"Путь не найден: {target_path}"}
         try:
-            if os.path.isdir(target_path):
-                os.startfile(target_path)
+            norm_target = os.path.abspath(target_path)
+            if os.path.isdir(norm_target):
+                os.startfile(norm_target)
             else:
-                subprocess.Popen(f'explorer.exe /select,"{target_path}"', shell=True)
-            return {"ok": True, "message": f"Открыто на мониторе ПК: {os.path.basename(target_path)}"}
+                subprocess.Popen(["explorer.exe", f"/select,{norm_target}"])
+            return {"ok": True, "message": f"Открыто на мониторе ПК: {os.path.basename(norm_target)}"}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -631,12 +646,20 @@ def create_app(assistant):
 
     @app.post("/api/chat")
     async def chat(req: Request):
-        data = await req.json()
+        try:
+            data = await req.json()
+        except Exception:
+            return Response(json.dumps({"error": "Некорректный JSON"}, ensure_ascii=False), status_code=400, media_type="application/json")
+
+        text = (data.get("text") or "").strip()
+        if not text:
+            return Response(json.dumps({"error": "Поле text обязательно для заполнения"}, ensure_ascii=False), status_code=400, media_type="application/json")
+
         speak = data.get("speak", True)
-        emotion, clean, raw = await assistant.handle_user_message(data["text"], speak=speak, source="web")
+        emotion, clean, raw = await assistant.handle_user_message(text, speak=speak, source="web")
         
         try:
-            tg_msg = f"🌐 <b>[Веб-панель]</b>\n👤 <b>Ты:</b> {data['text']}\n🎀 <b>Мия:</b> {clean}"
+            tg_msg = f"🌐 <b>[Веб-панель]</b>\n👤 <b>Ты:</b> {text}\n🎀 <b>Мия:</b> {clean}"
             assistant.notify_admin_sync(tg_msg)
         except Exception:
             pass
