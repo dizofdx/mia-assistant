@@ -50,6 +50,8 @@ class ScenarioEngine:
         return None
 
     def save(self, data):
+        if not isinstance(data, dict):
+            return
         safe = "".join(c for c in data.get("name", "scenario") if c.isalnum() or c in " _-").strip() or "scenario"
         target_path = os.path.join(self.folder, safe + ".json")
         with open(target_path, "w", encoding="utf-8") as fp:

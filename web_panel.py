@@ -1,7 +1,7 @@
 # web_panel.py — FastAPI панель управления Мии (http://localhost:8000)
 import os, sys, asyncio, json, socket
 from fastapi import FastAPI, Request, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from visual_commands import VisualCommandManager
@@ -348,7 +348,12 @@ def create_app(assistant):
 
     @app.post("/api/visual_commands")
     async def save_visual_command(req: Request):
-        data = await req.json()
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
         return vc_manager.save_flow(data)
 
     @app.delete("/api/visual_commands/{flow_id}")
@@ -361,23 +366,38 @@ def create_app(assistant):
 
     @app.post("/api/visual_commands/run")
     async def run_visual_command_body(req: Request):
-        data = await req.json()
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
         flow_id = data.get("id") or data.get("flow_id")
         return await vc_manager.execute_flow(flow_id)
 
     # === СТАРЫЕ СЦЕНАРИИ ДЛЯ СОВМЕСТИМОСТИ ===
     @app.get("/api/scenarios")
     def list_scenarios():
+        if not eng:
+            return []
         return eng.list_all()
 
     @app.post("/api/scenarios")
     async def create_scenario(req: Request):
-        eng.save(await req.json())
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Данные сценария должны быть объектом"}, status_code=400)
+        if eng:
+            eng.save(data)
         return {"ok": True}
 
     @app.delete("/api/scenarios/{name}")
     def delete_scenario(name: str):
-        eng.delete(name)
+        if eng:
+            eng.delete(name)
         return {"ok": True}
 
     # === УСТАНОВЛЕННЫЕ ПРИЛОЖЕНИЯ ПК (ДЛЯ РЕДАКТОРА КОМАНД) ===
@@ -436,6 +456,10 @@ def create_app(assistant):
             }
 
         norm_p = os.path.abspath(path)
+        parts = [p.lower() for p in norm_p.split(os.sep) if p]
+        if any(p.startswith(".") for p in parts) or any(p in ("$recycle.bin", "system volume information", "recovery") for p in parts):
+            return {"error": "Доступ к данной директории заблокирован политикой безопасности"}
+
         if not os.path.exists(norm_p):
             return {"error": f"Путь не найден: {norm_p}"}
 
@@ -443,6 +467,8 @@ def create_app(assistant):
         files = []
         try:
             for entry in os.scandir(norm_p):
+                if entry.name.startswith(".") or entry.name.lower() in ("config.py", ".env", "$recycle.bin", "system volume information", "recovery"):
+                    continue
                 try:
                     stat = entry.stat()
                     mod_time = datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%d.%m.%Y %H:%M")
@@ -557,7 +583,12 @@ def create_app(assistant):
 
     @app.post("/api/files/open")
     async def open_file_on_pc(req: Request):
-        data = await req.json()
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
         target_path = data.get("path", "")
         if not target_path or not os.path.exists(target_path):
             return {"ok": False, "error": f"Путь не найден: {target_path}"}
@@ -573,21 +604,36 @@ def create_app(assistant):
 
     @app.post("/api/run/{name}")
     async def run_scenario(name: str):
+        if not eng:
+            return {"ok": False, "error": "Движок сценариев не инициализирован"}
         res = await eng.run(name)
         return {"ok": True, "result": res}
 
     @app.post("/api/set_voice")
     async def set_voice(req: Request):
-        data = await req.json()
-        voice = data.get("voice", "baya")
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
+        voice = str(data.get("voice", "baya")).strip()
+        allowed_voices = {"aidar", "baya", "kseniya", "xenia", "eugene", "edge"}
+        if voice not in allowed_voices:
+            voice = "baya"
         assistant.cfg.SILERO_SPEAKER = voice
         return {"ok": True, "voice": voice}
 
     @app.post("/api/test_say")
     async def test_say(req: Request):
-        data = await req.json()
-        text = data.get("text", "")
-        voice = data.get("voice", getattr(assistant.cfg, "SILERO_SPEAKER", "baya"))
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
+        text = str(data.get("text", "")).strip()
+        voice = str(data.get("voice", getattr(assistant.cfg, "SILERO_SPEAKER", "baya"))).strip()
 
         async def _speak_task():
             if voice == "edge":
@@ -603,8 +649,15 @@ def create_app(assistant):
 
     @app.post("/api/chat_stream")
     async def chat_stream(req: Request):
-        data = await req.json()
-        text = data.get("text", "")
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
+        text = str(data.get("text", "")).strip()
+        if not text:
+            return JSONResponse({"error": "Поле text обязательно для заполнения"}, status_code=400)
         speak = data.get("speak", True)
 
         async def stream_generator():

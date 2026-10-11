@@ -230,6 +230,23 @@ class Tools:
         if not target:
             return "Укажи название программы или путь."
         raw = str(target).strip()
+        low = raw.lower().strip()
+        base_name = os.path.basename(raw).lower()
+
+        # Защитная блокировка потенциально опасных системных утилит и команд (Security Blocklist / Allowed policy)
+        blocked_bins = {
+            "cmd.exe", "powershell.exe", "pwsh.exe", "format.com", "vssadmin.exe",
+            "reg.exe", "regedit.exe", "diskpart.exe", "bcdedit.exe", "del.exe",
+            "certutil.exe", "rundll32.exe"
+        }
+        if base_name in blocked_bins or low in ("cmd", "powershell", "pwsh", "format", "regedit", "reg", "diskpart"):
+            return f"Запуск программы '{os.path.basename(raw)}' заблокирован политикой безопасности."
+
+        # Разрешенные расширения для прямого запуска файлов (Allowed executable extensions)
+        allowed_direct_exts = {".exe", ".lnk", ".bat", ".cmd", ""}
+        ext = os.path.splitext(raw)[1].lower()
+        if os.path.isabs(raw) and ext not in allowed_direct_exts:
+            return f"Запуск файлов с расширением '{ext}' заблокирован политикой безопасности."
 
         # 1. Прямой путь к файлу
         if os.path.exists(raw):
@@ -253,8 +270,6 @@ class Tools:
                     return f"Запустила: {os.path.basename(raw)}"
                 except Exception as e2:
                     return f"Ошибка запуска: {e2}"
-
-        low = raw.lower().strip()
 
         # 2. Популярные приложения
         if "steam" in low or "стим" in low:
@@ -285,7 +300,7 @@ class Tools:
             "блокнот": "notepad.exe", "notepad": "notepad.exe",
             "проводник": "explorer.exe", "explorer": "explorer.exe",
             "диспетчер задач": "taskmgr.exe", "taskmgr": "taskmgr.exe",
-            "терминал": "wt.exe", "cmd": "cmd.exe", "powershell": "powershell.exe",
+            "терминал": "wt.exe",
             "paint": "mspaint.exe", "пейнт": "mspaint.exe"
         }
         if low in sys_tools:
