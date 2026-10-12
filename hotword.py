@@ -21,6 +21,34 @@ class HotwordListener:
         self._active_stream = None
         os.makedirs("memory", exist_ok=True)
 
+    @staticmethod
+    def _find_supported_samplerate(device_idx):
+        """Проверяет поддерживаемые частоты дискретизации для устройства."""
+        candidates = [16000, 48000, 44100, 32000, 22050, 8000]
+        for rate in candidates:
+            try:
+                sd.check_input_settings(device=device_idx, samplerate=rate, channels=1)
+                return rate
+            except Exception:
+                pass
+        try:
+            dev = sd.query_devices(device_idx)
+            return int(dev.get("default_samplerate", 16000))
+        except Exception:
+            return 16000
+
+    @staticmethod
+    def _resample(samples: np.ndarray, in_rate: int, out_rate: int = 16000) -> np.ndarray:
+        """Ресэмплирует одномерный аудиомассив до 16 кГц без внешних зависимостей."""
+        if in_rate == out_rate or len(samples) == 0:
+            return samples
+        target_len = int(len(samples) * out_rate / in_rate)
+        return np.interp(
+            np.linspace(0, len(samples), target_len, endpoint=False),
+            np.arange(len(samples)),
+            samples
+        ).astype(np.float32)
+
     def _resolve_input_device(self):
         """Определяет корректный индекс входного устройства микрофона."""
         target = getattr(self.cfg, "MIC_DEVICE", None)
@@ -126,7 +154,7 @@ class HotwordListener:
         wake_names = getattr(self.cfg, "HOTWORD_NAMES", ["мия", "миечка", "мика", "mia"])
         extended_names = set(w.lower() for w in wake_names) | {
             "мия", "миечка", "мика", "mia", "миа", "мию", "мие", "мией", "мей", "мийо",
-            "михель", "miya", "mya", "mika", "миля", "миша", "мий", "миё", "миенька"
+            "михель", "miya", "mya", "mika", "миля", "мий", "миё", "миенька"
         }
 
         wake_regex = re.compile(
@@ -165,17 +193,22 @@ class HotwordListener:
         return True, cmd
 
     def _listen_loop(self):
+        was_speaking = False
+        echo_drain_blocks = 0
         while self.running and self.enabled:
             try:
                 self.mic_device, self.mic_device_name = self._resolve_input_device()
+                stream_rate = self._find_supported_samplerate(self.mic_device)
                 base_threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
                 min_silence_ms = int(getattr(self.cfg, "HOTWORD_VAD_MIN_SILENCE_MS", 900))
                 max_duration_ms = int(getattr(self.cfg, "HOTWORD_MAX_DURATION_MS", 8000))
                 pre_roll_ms = float(getattr(self.cfg, "HOTWORD_PRE_ROLL_MS", 350))
                 vad_enabled = bool(getattr(self.cfg, "HOTWORD_VAD_ENABLED", True))
 
-                with sd.InputStream(device=self.mic_device, samplerate=self.sample_rate, channels=1,
-                                    dtype='float32', blocksize=self.block_size) as stream:
+                read_block_size = int(self.block_size * stream_rate / self.sample_rate)
+
+                with sd.InputStream(device=self.mic_device, samplerate=stream_rate, channels=1,
+                                    dtype='float32', blocksize=read_block_size) as stream:
                     self._active_stream = stream
                     pre_buffer = []
                     max_pre = max(1, int(self.sample_rate * pre_roll_ms / 1000 / self.block_size))
@@ -195,34 +228,53 @@ class HotwordListener:
                             if getattr(self.cfg, "AUDIO_DUCKING_ENABLED", True) and hasattr(self.a, "ducker"):
                                 self.a.ducker.unduck()
 
-                        # Когда Мия говорит: поддерживаем голосовое прерывание (barge-in: "стоп", "хватит", "замолчи", "мия")
-                        if getattr(self.a.voice, "is_speaking", False):
-                            data, _ = stream.read(self.block_size)
-                            block = data.flatten()
+                        # Когда Мия говорит:
+                        is_speaking_now = getattr(self.a.voice, "is_speaking", False)
+                        if is_speaking_now:
+                            was_speaking = True
+                            data, _ = stream.read(read_block_size)
+                            raw_block = data.flatten()
+                            block = self._resample(raw_block, stream_rate, self.sample_rate) if stream_rate != self.sample_rate else raw_block
                             rms = float(np.sqrt(np.mean(block**2)))
-                            if rms >= base_threshold * 1.6:
+
+                            # Поддержка barge-in: только при громком голосе поверх звука колонок
+                            # и строго по стоп-словам (без "мия", чтобы не прерывать речь ложно)
+                            barge_threshold = max(0.012, base_threshold * 4.0)
+                            if rms >= barge_threshold:
                                 barge_blocks = [block]
-                                for _ in range(int(self.sample_rate * 1.5 / self.block_size)):
-                                    d, _ = stream.read(self.block_size)
-                                    barge_blocks.append(d.flatten())
+                                for _ in range(int(self.sample_rate * 1.2 / self.block_size)):
+                                    d, _ = stream.read(read_block_size)
+                                    rb = d.flatten()
+                                    barge_blocks.append(self._resample(rb, stream_rate, self.sample_rate) if stream_rate != self.sample_rate else rb)
                                 barge_audio = np.concatenate(barge_blocks)
                                 try:
                                     barge_text = self.a.ears.transcribe(barge_audio).lower()
                                 except Exception:
                                     barge_text = ""
-                                if any(kw in barge_text for kw in ["стоп", "хватит", "замолчи", "тихо", "молчи", "отмена", "стой", "мия"]):
+                                if any(kw in barge_text for kw in ["стоп", "хватит", "замолчи", "тихо", "молчи", "отмена", "стой"]):
                                     print(f"[WakeWord] 🛑 Речь ассистента прервана голосовой командой: «{barge_text}»")
                                     self.a.voice.stop()
-                                    pre_buffer.clear()
-                                    vad.reset()
-                                    continue
+                                    was_speaking = False
+                                    echo_drain_blocks = 3
                             pre_buffer.clear()
                             vad.reset()
-                            time.sleep(0.04)
                             continue
 
-                        data, _ = stream.read(self.block_size)
-                        block = data.flatten()
+                        # Если речь только что завершилась: дренируем акустическое эхо комнаты (~380 мс)
+                        if was_speaking:
+                            was_speaking = False
+                            echo_drain_blocks = max(echo_drain_blocks, 6)
+
+                        if echo_drain_blocks > 0:
+                            stream.read(read_block_size)
+                            echo_drain_blocks -= 1
+                            pre_buffer.clear()
+                            vad.reset()
+                            continue
+
+                        data, _ = stream.read(read_block_size)
+                        raw_block = data.flatten()
+                        block = self._resample(raw_block, stream_rate, self.sample_rate) if stream_rate != self.sample_rate else raw_block
                         rms = float(np.sqrt(np.mean(block**2)))
 
                         speech_detected = vad.process(block) if vad_enabled else rms >= base_threshold
@@ -241,8 +293,9 @@ class HotwordListener:
                             while self.running and self.enabled:
                                 if getattr(self.a.voice, "is_speaking", False):
                                     break
-                                d, _ = stream.read(self.block_size)
-                                b = d.flatten()
+                                d, _ = stream.read(read_block_size)
+                                raw_d = d.flatten()
+                                b = self._resample(raw_d, stream_rate, self.sample_rate) if stream_rate != self.sample_rate else raw_d
                                 phrase_blocks.append(b)
                                 b_rms = float(np.sqrt(np.mean(b**2)))
                                 b_speech = vad.process(b) if vad_enabled else b_rms >= max(0.0008, base_threshold * 0.5)

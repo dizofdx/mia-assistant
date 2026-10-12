@@ -698,6 +698,24 @@ def create_app(assistant):
         except Exception as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+    def _save_config_updates(updates: dict):
+        import re
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
+        if not os.path.exists(config_path):
+            return
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            for key, val in updates.items():
+                pattern = rf'^{key}\s*=.*$'
+                repr_val = repr(val)
+                if re.search(pattern, content, flags=re.MULTILINE):
+                    content = re.sub(pattern, f"{key} = {repr_val}", content, flags=re.MULTILINE)
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            print(f"[Config] Ошибка сохранения обновлений: {e}")
+
     @app.post("/api/audio/set_mic")
     async def set_mic(req: Request):
         try:
@@ -710,13 +728,20 @@ def create_app(assistant):
         dev = data.get("device")
         threshold = data.get("threshold")
 
+        updates = {}
         if dev is not None:
             assistant.cfg.MIC_DEVICE = dev
+            updates["MIC_DEVICE"] = dev
         if threshold is not None:
             try:
-                assistant.cfg.HOTWORD_ENERGY_THRESHOLD = float(threshold)
+                thr_val = float(threshold)
+                assistant.cfg.HOTWORD_ENERGY_THRESHOLD = thr_val
+                updates["HOTWORD_ENERGY_THRESHOLD"] = thr_val
             except Exception:
                 pass
+
+        if updates:
+            _save_config_updates(updates)
 
         if hasattr(assistant, "hotword") and hasattr(assistant.hotword, "restart"):
             assistant.hotword.restart()
@@ -743,16 +768,35 @@ def create_app(assistant):
                 except Exception:
                     dev_name = "По умолчанию"
 
-            sample_rate = 16000
+            stream_rate = 16000
+            if hasattr(assistant.hotword, "_find_supported_samplerate"):
+                stream_rate = assistant.hotword._find_supported_samplerate(dev_idx)
+            else:
+                for r in [16000, 48000, 44100, 32000, 22050]:
+                    try:
+                        sd.check_input_settings(device=dev_idx, samplerate=r, channels=1)
+                        stream_rate = r
+                        break
+                    except Exception:
+                        pass
+
             duration = 1.5
-            frames = int(sample_rate * duration)
+            frames = int(stream_rate * duration)
 
             def _record():
-                return sd.rec(frames, samplerate=sample_rate, channels=1, dtype="float32", device=dev_idx)
+                return sd.rec(frames, samplerate=stream_rate, channels=1, dtype="float32", device=dev_idx)
 
             rec_data = await asyncio.to_thread(_record)
             await asyncio.to_thread(sd.wait)
             arr = rec_data.flatten()
+            if stream_rate != 16000:
+                target_len = int(len(arr) * 16000 / stream_rate)
+                arr = np.interp(
+                    np.linspace(0, len(arr), target_len, endpoint=False),
+                    np.arange(len(arr)),
+                    arr
+                ).astype(np.float32)
+
             rms = float(np.sqrt(np.mean(arr**2)))
             peak = float(np.max(np.abs(arr)))
 
@@ -764,6 +808,7 @@ def create_app(assistant):
                 "ok": True,
                 "device_index": dev_idx,
                 "device_name": dev_name,
+                "sample_rate": stream_rate,
                 "rms": round(rms, 6),
                 "peak": round(peak, 6),
                 "heard": heard.strip()

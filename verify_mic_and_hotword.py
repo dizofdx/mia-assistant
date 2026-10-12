@@ -3,9 +3,10 @@ verify_mic_and_hotword.py
 Тестирование и верификация всех улучшений микрофона, распознавания речи и хотворда:
 1. Корректное извлечение команд и обращений в любом месте фразы (_extract_command).
 2. Автоматическое определение микрофона (_resolve_input_device).
-3. Метод прерывания речи voice.stop() (barge-in).
+3. Метод прерывания речи voice.stop() (barge-in без ложного срабатывания на саму Мию).
 4. Чувствительность EnergyVAD (порог 0.0015) для естественного голоса.
 5. Эндпоинты веб-панели /api/audio/devices, /api/audio/set_mic, /api/audio/test_mic.
+6. Поддержка произвольных частот дискретизации (WASAPI 48 кГц и др.) и ресэмплинг в 16 кГц.
 """
 
 import sys, os
@@ -29,7 +30,7 @@ import web_panel
 from audio_utils import EnergyVAD
 
 def test_1_extract_command(asst):
-    print("[1/5] Тест распознавания имени 'Мия' в начале, середине и конце фразы...")
+    print("[1/6] Тест распознавания имени 'Мия' в начале, середине и конце фразы...")
     hl = asst.hotword
 
     cases = [
@@ -54,7 +55,7 @@ def test_1_extract_command(asst):
     return True
 
 def test_2_resolve_input_device(asst):
-    print("[2/5] Тест определения входного устройства микрофона...")
+    print("[2/6] Тест определения входного устройства микрофона...")
     hl = asst.hotword
 
     idx, name = hl._resolve_input_device()
@@ -64,7 +65,7 @@ def test_2_resolve_input_device(asst):
     return True
 
 def test_3_voice_stop(asst):
-    print("[3/5] Тест метода голосового прерывания voice.stop()...")
+    print("[3/6] Тест метода голосового прерывания voice.stop()...")
     v = asst.voice
 
     v.is_speaking = True
@@ -76,7 +77,7 @@ def test_3_voice_stop(asst):
     return True
 
 def test_4_vad_sensitivity():
-    print("[4/5] Тест чувствительности EnergyVAD при пороге 0.0015...")
+    print("[4/6] Тест чувствительности EnergyVAD при пороге 0.0015...")
     vad = EnergyVAD(sample_rate=16000, frame_size=1024, threshold=0.0015, initial_noise=0.0008)
 
     # Тишина / шум комнаты (RMS ~ 0.0007)
@@ -98,7 +99,9 @@ def test_4_vad_sensitivity():
     return True
 
 def test_5_web_audio_endpoints(asst):
-    print("[5/5] Тест API эндпоинтов управления микрофоном в веб-панели...")
+    print("[5/6] Тест API эндпоинтов управления микрофоном в веб-панели...")
+    orig_mic = getattr(asst.cfg, "MIC_DEVICE", None)
+    orig_thresh = getattr(asst.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015)
     app = web_panel.create_app(asst)
 
     try:
@@ -124,11 +127,34 @@ def test_5_web_audio_endpoints(asst):
             test_data = res_test.json()
             assert test_data.get("ok") == True
             assert "rms" in test_data and "peak" in test_data and "device_name" in test_data
-            print(f"  Тест микрофона через API успешен: [{test_data.get('device_index')}] {test_data.get('device_name')} (RMS: {test_data.get('rms')})")
+            print(f"  Тест микрофона через API успешен: [{test_data.get('device_index')}] {test_data.get('device_name')} (RMS: {test_data.get('rms')}, SR: {test_data.get('sample_rate', 16000)} Гц)")
     finally:
+        # Восстанавливаем оригинальные значения конфигурации
+        asst.cfg.MIC_DEVICE = orig_mic
+        asst.cfg.HOTWORD_ENERGY_THRESHOLD = orig_thresh
         asst.hotword.stop()
 
     print("  ✅ [УСПЕШНО] Эндпоинты /api/audio/* работают штатно")
+    return True
+
+def test_6_samplerate_and_resampling(asst):
+    print("[6/6] Тест поддержки различных частот дискретизации (WASAPI 48 кГц и ресэмплинг)...")
+    hl = asst.hotword
+
+    # 1. Проверяем функцию определения частоты
+    supported_sr = hl._find_supported_samplerate(None)
+    assert supported_sr in (8000, 16000, 22050, 32000, 44100, 48000), f"Неожиданная частота: {supported_sr}"
+
+    # 2. Проверяем ресэмплинг из 48 кГц в 16 кГц
+    raw_48k = np.random.normal(0, 0.01, 3072).astype(np.float32)
+    resampled_16k = hl._resample(raw_48k, 48000, 16000)
+    assert len(resampled_16k) == 1024, f"Ожидалась длина 1024, получено {len(resampled_16k)}"
+
+    # 3. Ресэмплинг без изменения частоты
+    same = hl._resample(resampled_16k, 16000, 16000)
+    assert np.array_equal(same, resampled_16k)
+
+    print("  ✅ [УСПЕШНО] Динамический выбор частоты и ресэмплинг до 16 кГц работают безошибочно")
     return True
 
 if __name__ == "__main__":
@@ -144,6 +170,7 @@ if __name__ == "__main__":
         test_3_voice_stop(asst)
         test_4_vad_sensitivity()
         test_5_web_audio_endpoints(asst)
+        test_6_samplerate_and_resampling(asst)
     finally:
         if asst is not None and hasattr(asst, "hotword"):
             asst.hotword.stop()
