@@ -37,12 +37,12 @@ class EnergyVAD:
         self,
         sample_rate: int = 16000,
         frame_size: int = 1024,
-        threshold: float = 0.0035,
+        threshold: float = 0.0015,
         noise_multiplier: float = 1.8,
         silence_multiplier: float = 1.35,
         min_speech_ms: int = 100,
         min_silence_ms: int = 480,
-        initial_noise: float = 0.002,
+        initial_noise: float = 0.0008,
     ) -> None:
         self.sample_rate = max(1, int(sample_rate))
         self.frame_size = max(1, int(frame_size))

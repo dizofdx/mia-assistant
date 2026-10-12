@@ -316,6 +316,15 @@ class Voice:
     def speaker(self):
         return self.get_speaker()
 
+    def stop(self):
+        """Мгновенно прерывает текущую речь (озвучку) ассистента."""
+        self._stop_requested = True
+        self.is_speaking = False
+        try:
+            sd.stop()
+        except Exception:
+            pass
+
     async def generate_voice_file(self, text, output_path="memory/reply_voice.wav", emotion="СПОКОЙСТВИЕ"):
         """Генерирует аудиофайл для отправки голосовых сообщений в Telegram (Silero или Edge-TTS)."""
         clean_text = clean_for_speech(text)

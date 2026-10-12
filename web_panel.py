@@ -653,6 +653,124 @@ def create_app(assistant):
         asyncio.create_task(_speak_task())
         return {"ok": True}
 
+    @app.get("/api/audio/devices")
+    async def get_audio_devices():
+        import sounddevice as sd
+        try:
+            devs = sd.query_devices()
+            hostapis = sd.query_hostapis()
+            default_in, default_out = sd.default.device
+            current_mic = getattr(assistant.cfg, "MIC_DEVICE", None)
+            if current_mic is None:
+                current_mic = default_in
+
+            inputs = []
+            outputs = []
+            for idx, d in enumerate(devs):
+                api_name = hostapis[d.get("hostapi", 0)]["name"]
+                if d.get("max_input_channels", 0) > 0:
+                    inputs.append({
+                        "index": idx,
+                        "name": d.get("name", ""),
+                        "hostapi": api_name,
+                        "channels": d.get("max_input_channels", 0),
+                        "samplerate": d.get("default_samplerate", 44100.0),
+                        "is_default": (idx == default_in),
+                        "is_selected": (idx == current_mic or (isinstance(current_mic, str) and current_mic.lower() in d.get("name", "").lower()))
+                    })
+                if d.get("max_output_channels", 0) > 0:
+                    outputs.append({
+                        "index": idx,
+                        "name": d.get("name", ""),
+                        "hostapi": api_name,
+                        "channels": d.get("max_output_channels", 0),
+                        "samplerate": d.get("default_samplerate", 44100.0),
+                        "is_default": (idx == default_out),
+                    })
+            return {
+                "ok": True,
+                "inputs": inputs,
+                "outputs": outputs,
+                "current_mic": current_mic,
+                "threshold": float(getattr(assistant.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015)),
+                "hotword_enabled": bool(getattr(assistant.hotword, "enabled", True))
+            }
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+    @app.post("/api/audio/set_mic")
+    async def set_mic(req: Request):
+        try:
+            data = await req.json()
+        except Exception:
+            return JSONResponse({"error": "Некорректный JSON"}, status_code=400)
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "Тело запроса должно быть объектом JSON"}, status_code=400)
+
+        dev = data.get("device")
+        threshold = data.get("threshold")
+
+        if dev is not None:
+            assistant.cfg.MIC_DEVICE = dev
+        if threshold is not None:
+            try:
+                assistant.cfg.HOTWORD_ENERGY_THRESHOLD = float(threshold)
+            except Exception:
+                pass
+
+        if hasattr(assistant, "hotword") and hasattr(assistant.hotword, "restart"):
+            assistant.hotword.restart()
+
+        return {
+            "ok": True,
+            "device": assistant.cfg.MIC_DEVICE,
+            "threshold": getattr(assistant.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015),
+            "mic_name": getattr(assistant.hotword, "mic_device_name", "")
+        }
+
+    @app.post("/api/audio/test_mic")
+    async def test_mic():
+        import sounddevice as sd
+        import numpy as np
+        try:
+            target_dev = getattr(assistant.cfg, "MIC_DEVICE", None)
+            if hasattr(assistant.hotword, "_resolve_input_device"):
+                dev_idx, dev_name = assistant.hotword._resolve_input_device()
+            else:
+                dev_idx = target_dev if isinstance(target_dev, int) else sd.default.device[0]
+                try:
+                    dev_name = sd.query_devices(dev_idx).get("name", "По умолчанию") if dev_idx is not None else "По умолчанию"
+                except Exception:
+                    dev_name = "По умолчанию"
+
+            sample_rate = 16000
+            duration = 1.5
+            frames = int(sample_rate * duration)
+
+            def _record():
+                return sd.rec(frames, samplerate=sample_rate, channels=1, dtype="float32", device=dev_idx)
+
+            rec_data = await asyncio.to_thread(_record)
+            await asyncio.to_thread(sd.wait)
+            arr = rec_data.flatten()
+            rms = float(np.sqrt(np.mean(arr**2)))
+            peak = float(np.max(np.abs(arr)))
+
+            heard = ""
+            if hasattr(assistant, "ears") and rms > 0.0005:
+                heard = await asyncio.to_thread(assistant.ears.transcribe, arr)
+
+            return {
+                "ok": True,
+                "device_index": dev_idx,
+                "device_name": dev_name,
+                "rms": round(rms, 6),
+                "peak": round(peak, 6),
+                "heard": heard.strip()
+            }
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
     @app.post("/api/chat_stream")
     async def chat_stream(req: Request):
         try:

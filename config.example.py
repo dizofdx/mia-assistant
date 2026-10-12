@@ -105,7 +105,7 @@ WHISPER_SAMPLE_RATE = 16000
 WHISPER_BEAM_SIZE = 1
 WHISPER_VAD_ENABLED = True       # Определение активности голоса (отсекает тишину и шумы)
 WHISPER_VAD_FRAME_SIZE = 512
-WHISPER_VAD_THRESHOLD = 0.004
+WHISPER_VAD_THRESHOLD = 0.002
 WHISPER_VAD_NOISE_MULTIPLIER = 2.2
 WHISPER_VAD_SILENCE_MULTIPLIER = 1.3
 WHISPER_VAD_MIN_SPEECH_MS = 80
@@ -120,6 +120,7 @@ WHISPER_AGC_MAX_GAIN = 3.0
 # ==============================================================================
 # 6. ГОЛОСОВАЯ АКТИВАЦИЯ ПО ИМЕНИ (ХОТВОРД)
 # ==============================================================================
+MIC_DEVICE = None         # None = системный микрофон по умолчанию. Можно указать индекс (1) или имя ("Storm Pro", "aPods")
 HOTWORD_ENABLED = True    # Слушать микрофон ПК в фоновом режиме
 
 # Имена для активации ассистента:
@@ -127,13 +128,13 @@ HOTWORD_ENABLED = True    # Слушать микрофон ПК в фоново
 HOTWORD_NAMES   = ["мия", "миечка", "мика", "mia", "миа", "мию", "мие", "miya"]
 # Для Джарвиса: HOTWORD_NAMES = ["джарвис", "jarvis"]
 
-HOTWORD_ENERGY_THRESHOLD = 0.0035  # Чувствительность микрофона (ниже = чувствительнее)
+HOTWORD_ENERGY_THRESHOLD = 0.0015  # Чувствительность микрофона (ниже = чувствительнее, слышит обычный голос)
 HOTWORD_VAD_ENABLED = True
 HOTWORD_VAD_NOISE_MULTIPLIER = 1.8
 HOTWORD_VAD_SILENCE_MULTIPLIER = 1.35
 HOTWORD_VAD_MIN_SPEECH_MS = 100
-HOTWORD_VAD_MIN_SILENCE_MS = 500
-HOTWORD_MAX_DURATION_MS = 6000
+HOTWORD_VAD_MIN_SILENCE_MS = 900   # 900 мс тишины (не обрезает фразу при естественных паузах между словами)
+HOTWORD_MAX_DURATION_MS = 8000
 HOTWORD_PRE_ROLL_MS = 350
 
 

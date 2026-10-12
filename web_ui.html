@@ -2024,17 +2024,39 @@
             </div>
 
             <div class="glass-tile" style="display: flex; flex-direction: column; gap: 14px;">
-              <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Микрофон ПК (Активация по имени)</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 15px; font-weight: 600; color: #fff;">Микрофон ПК (Активация по имени)</h3>
+                <span id="mic-status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(166, 227, 161, 0.15); color: #a6e3a1; border: 1px solid rgba(166, 227, 161, 0.3);">Слушает «Мия»</span>
+              </div>
               <p style="font-size: 12px; color: var(--color-text-muted);">
-                Микрофон слушает имя «Мия» в фоне. Адаптивный фильтр автоматически подстраивается под уровень шума.
+                Микрофон слушает имя «Мия» в фоне. Адаптивный VAD-фильтр отсекает шум и улавливает голос на комфортном расстоянии.
               </p>
               <div>
-                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-                  <span>Порог чувствительности:</span>
-                  <span id="threshold-val" style="font-family: 'JetBrains Mono', monospace; color: var(--cyan);">0.0038</span>
-                </div>
-                <input type="range" min="0.002" max="0.015" step="0.0005" value="0.0038" style="width: 100%;" oninput="document.getElementById('threshold-val').innerText = this.value">
+                <label style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 6px;">Выберите микрофон:</label>
+                <select id="mic-device-select" onchange="updateMicDevice(this.value)" style="width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--card-border); color: #fff; padding: 8px 12px; border-radius: var(--radius-sm); outline: none; font-family: inherit;">
+                  <option value="">Поиск микрофонов...</option>
+                </select>
               </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                  <span>Порог чувствительности (VAD):</span>
+                  <span id="threshold-val" style="font-family: 'JetBrains Mono', monospace; color: var(--cyan);">0.0015</span>
+                </div>
+                <input id="mic-threshold-range" type="range" min="0.0005" max="0.0100" step="0.0005" value="0.0015" style="width: 100%;" oninput="document.getElementById('threshold-val').innerText = this.value" onchange="updateMicThreshold(this.value)">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--color-text-dim); margin-top: 2px;">
+                  <span>Чувствительнее (0.0005)</span>
+                  <span style="color: var(--cyan);">Рекомендуется (0.0015)</span>
+                  <span>Шумная комната (0.005+)</span>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+                <button class="aam-btn" id="btn-test-mic" onclick="testMicDevice()" style="flex: 1;">
+                  🎤 Проверить микрофон (1.5 сек)
+                </button>
+              </div>
+              <div id="mic-test-result" style="display: none; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--card-border); line-height: 1.6;"></div>
             </div>
           </div>
         </section>
@@ -2560,6 +2582,9 @@
           setTimeout(() => window.astraMap.resize(), 150);
         }
       }
+      if (tabId === 'voice') {
+        loadAudioSettings();
+      }
     }
 
     function toggleFullscreen() {
@@ -2765,6 +2790,7 @@
     setInterval(updateSystemStats, 2500);
     updateSystemStats();
     updateStatusInfo();
+    loadAudioSettings();
     setTimeout(initAstraMap, 200);
 
     // === 3. ПУЛЬТ УПРАВЛЕНИЯ ПК И МУЛЬТИМЕДИА ===
@@ -3998,6 +4024,111 @@
           })
         });
       } catch (e) {}
+    }
+
+    // === 8.1 НАСТРОЙКИ МИКРОФОНА И ПРОВЕРКА ВВОДА ===
+    let _audioDevicesLoading = false;
+    async function loadAudioSettings() {
+      if (_audioDevicesLoading) return;
+      _audioDevicesLoading = true;
+      try {
+        const res = await fetch('/api/audio/devices');
+        const data = await res.json();
+        if (!data.ok) return;
+
+        const sel = document.getElementById('mic-device-select');
+        if (sel && data.inputs) {
+          sel.innerHTML = '';
+          data.inputs.forEach(dev => {
+            const opt = document.createElement('option');
+            opt.value = dev.index;
+            const defMark = dev.is_default ? ' (По умолчанию)' : '';
+            opt.textContent = `[#${dev.index}] ${dev.name}${defMark} [${dev.hostapi}]`;
+            if (dev.is_selected) opt.selected = true;
+            sel.appendChild(opt);
+          });
+        }
+        if (data.threshold !== undefined) {
+          const range = document.getElementById('mic-threshold-range');
+          const val = document.getElementById('threshold-val');
+          if (range) range.value = data.threshold;
+          if (val) val.innerText = data.threshold;
+        }
+        const badge = document.getElementById('mic-status-badge');
+        if (badge) {
+          if (data.hotword_enabled) {
+            badge.style.display = 'inline-block';
+            badge.innerText = 'Слушает «Мия»';
+            badge.style.color = '#a6e3a1';
+            badge.style.borderColor = 'rgba(166, 227, 161, 0.3)';
+          } else {
+            badge.innerText = 'Слушатель отключен';
+            badge.style.color = '#f38ba8';
+            badge.style.borderColor = 'rgba(243, 139, 168, 0.3)';
+          }
+        }
+      } catch (e) {
+      } finally {
+        _audioDevicesLoading = false;
+      }
+    }
+
+    async function updateMicDevice(devIdx) {
+      if (devIdx === '' || devIdx === null) return;
+      try {
+        const res = await fetch('/api/audio/set_mic', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ device: parseInt(devIdx) })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMascotBubble(`Микрофон переключен на: ${data.mic_name || devIdx}`);
+        }
+      } catch (e) {}
+    }
+
+    async function updateMicThreshold(val) {
+      try {
+        await fetch('/api/audio/set_mic', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ threshold: parseFloat(val) })
+        });
+        showMascotBubble(`Порог VAD обновлен: ${val}`);
+      } catch (e) {}
+    }
+
+    async function testMicDevice() {
+      const btn = document.getElementById('btn-test-mic');
+      const resBox = document.getElementById('mic-test-result');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = '🔴 Запись 1.5 сек (говори в микрофон)...';
+      }
+      if (resBox) {
+        resBox.style.display = 'block';
+        resBox.innerHTML = '<span style="color: var(--cyan);">🎤 Слушаю микрофон (1.5 сек)... Говори что-нибудь!</span>';
+      }
+      try {
+        const res = await fetch('/api/audio/test_mic', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          const heardHtml = data.heard ? `<br><b>Распознано Whisper:</b> «<span style="color: var(--cyan);">${data.heard}</span>»` : '<br><span style="color: var(--color-text-dim);">Слова не распознаны (тишина или шепот)</span>';
+          const rmsColor = data.rms >= 0.0015 ? '#a6e3a1' : (data.rms >= 0.0008 ? '#f9e2af' : '#9ca3af');
+          const rmsLabel = data.rms >= 0.0015 ? 'Отличный уровень' : (data.rms >= 0.0008 ? 'Тихий голос' : 'Фоновый шум');
+          resBox.innerHTML = `<b>Устройство:</b> [${data.device_index}] ${data.device_name}<br><b>Уровень звука (RMS):</b> <span style="color: ${rmsColor}; font-weight: 600;">${data.rms}</span> (${rmsLabel}) | <b>Пик:</b> ${data.peak}${heardHtml}`;
+        } else {
+          resBox.innerHTML = `<span style="color: var(--pink);">Ошибка записи: ${data.error || 'Не удалось получить аудио с микрофона'}</span>`;
+        }
+      } catch (e) {
+        if (resBox) resBox.innerHTML = `<span style="color: var(--pink);">Ошибка запроса: ${e}</span>`;
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = '🎤 Проверить микрофон (1.5 сек)';
+        }
+      }
     }
 
     // === 9. PWA И МОБИЛЬНАЯ УСТАНОВКА НА ANDROID ===

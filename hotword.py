@@ -13,28 +13,98 @@ class HotwordListener:
         self.thread = None
         self.sample_rate = 16000
         self.block_size = 1024
-        self.threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0035)
+        self.threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
         self.wake_names = getattr(self.cfg, "HOTWORD_NAMES", ["мия", "миечка", "мика", "mia"])
         self.active_listening_until = 0.0
+        self.mic_device = None
+        self.mic_device_name = "По умолчанию"
+        self._active_stream = None
         os.makedirs("memory", exist_ok=True)
+
+    def _resolve_input_device(self):
+        """Определяет корректный индекс входного устройства микрофона."""
+        target = getattr(self.cfg, "MIC_DEVICE", None)
+        try:
+            devices = sd.query_devices()
+        except Exception:
+            return None, "По умолчанию"
+
+        if target is not None:
+            # 1. Если указан точный числовой индекс
+            if isinstance(target, int) and 0 <= target < len(devices):
+                dev = devices[target]
+                if dev.get("max_input_channels", 0) > 0:
+                    return target, dev.get("name", f"Устройство {target}")
+            # 2. Если указана строка (имя или часть имени)
+            target_str = str(target).lower().strip()
+            for idx, dev in enumerate(devices):
+                if dev.get("max_input_channels", 0) > 0:
+                    try:
+                        hostapi = sd.query_hostapis(dev.get("hostapi", 0))["name"]
+                    except Exception:
+                        hostapi = ""
+                    if hostapi != "Windows WDM-KS" and target_str in dev.get("name", "").lower():
+                        return idx, dev.get("name", f"Устройство {idx}")
+            for idx, dev in enumerate(devices):
+                if dev.get("max_input_channels", 0) > 0 and target_str in dev.get("name", "").lower():
+                    return idx, dev.get("name", f"Устройство {idx}")
+
+        # По умолчанию берем системный дефолт из sounddevice
+        try:
+            def_dev = sd.default.device[0]
+            if def_dev is not None and def_dev >= 0 and def_dev < len(devices):
+                dev = devices[def_dev]
+                if dev.get("max_input_channels", 0) > 0:
+                    return def_dev, dev.get("name", f"Устройство {def_dev}")
+        except Exception:
+            pass
+
+        # Первое подходящее устройство
+        for idx, dev in enumerate(devices):
+            if dev.get("max_input_channels", 0) > 0:
+                try:
+                    hostapi = sd.query_hostapis(dev.get("hostapi", 0))["name"]
+                except Exception:
+                    hostapi = ""
+                if hostapi != "Windows WDM-KS":
+                    return idx, dev.get("name", f"Устройство {idx}")
+        return None, "По умолчанию"
 
     def start(self):
         if self.running or not self.enabled:
             return
         self.running = True
+        self.threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
+        self.mic_device, self.mic_device_name = self._resolve_input_device()
         self.thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.thread.start()
-        print("[WakeWord] Фоновый слушатель имени ('Мия') запущен")
+        dev_label = f"[{self.mic_device}] {self.mic_device_name}" if self.mic_device is not None else self.mic_device_name
+        print(f"[WakeWord] 🎤 Фоновый слушатель запущен | Микрофон: {dev_label} | Порог VAD: {self.threshold}")
 
     def stop(self):
         self.running = False
-        # Never leave the user's master volume reduced when listening is
-        # disabled or the input stream is torn down.
         if getattr(self.cfg, "AUDIO_DUCKING_ENABLED", True) and hasattr(self.a, "ducker"):
             try:
                 self.a.ducker.unduck()
             except Exception:
                 pass
+        if self._active_stream:
+            try:
+                self._active_stream.abort()
+            except Exception:
+                pass
+        if self.thread and self.thread.is_alive() and threading.current_thread() != self.thread:
+            try:
+                self.thread.join(timeout=1.5)
+            except Exception:
+                pass
+            self.thread = None
+
+    def restart(self):
+        """Перезапускает слушатель с актуальными настройками устройства и порога."""
+        self.stop()
+        time.sleep(0.1)
+        self.start()
 
     def toggle(self):
         self.enabled = not self.enabled
@@ -46,96 +116,127 @@ class HotwordListener:
 
     def _extract_command(self, text):
         """Проверяет, было ли названо имя Мии, и извлекает саму команду."""
-        raw = text.lower().strip()
-        cleaned = re.sub(r'[^\w\s]', ' ', raw)
+        if not text:
+            return False, ""
+        raw = text.strip()
+        low = raw.lower()
+        cleaned = re.sub(r'[^\w\s]', ' ', low)
         words = cleaned.split()
 
-        # Расширенный список вариантов произношения имени "Мия" и созвучных слов от Whisper
         wake_names = getattr(self.cfg, "HOTWORD_NAMES", ["мия", "миечка", "мика", "mia"])
-        extended_names = set(wake_names) | {
-            "миа", "мию", "мие", "мией", "мей", "мийо", "михель", "miya", "mya", "mika",
-            "меня", "мне", "миля", "миша", "нея", "нее"
+        extended_names = set(w.lower() for w in wake_names) | {
+            "мия", "миечка", "мика", "mia", "миа", "мию", "мие", "мией", "мей", "мийо",
+            "михель", "miya", "mya", "mika", "миля", "миша", "мий", "миё", "миенька"
         }
 
-        # 1. Поиск совпадений по первым словам фразы
-        matched_name = None
-        for name in extended_names:
-            if words and words[0] == name:
-                matched_name = name
-                break
-            elif len(words) > 1 and words[1] == name and words[0] in ["эй", "хей", "ну", "привет", "ок", "слушай"]:
-                matched_name = name
-                break
+        wake_regex = re.compile(
+            r'\b(ми[яаеюё]|мией|миечк[аеиу]|мик[аеиу]|миеньк[аеиу]|мий|mia|miya|mika)\b',
+            re.IGNORECASE
+        )
+        greeting_prefix_regex = re.compile(
+            r'^(?:эй|хей|привет|здравствуй|здравствуйте|слушай|послушай|ок|ну|скажи)\b[,!\s]*',
+            re.IGNORECASE
+        )
 
-        # 2. Поиск по корням регулярным выражением
+        matched_name = None
+        m = wake_regex.search(low)
+        if m:
+            matched_name = m.group(1)
+        else:
+            for w in words:
+                if w in extended_names:
+                    matched_name = w
+                    break
+
         if not matched_name:
-            m = re.search(r'^(?:эй|привет|здравствуй|слушай|ок|хей|ну)?\s*(ми[яаею]|миечк[аеиу]|мик[аеиу]|mia|miya|меня|мне)\b', cleaned)
-            if m:
-                matched_name = m.group(1)
+            if words and words[0] in {"меня", "мне"} and len(words) > 1:
+                matched_name = words[0]
 
         if not matched_name:
             return False, ""
 
-        # Убираем обращение и приветствие
-        pattern = r'^(?:эй|привет|здравствуй|слушай|ок|хей|ну)?\s*' + re.escape(matched_name) + r'\b[,!\s]*'
-        cmd = re.sub(pattern, '', raw, flags=re.IGNORECASE).strip()
-        cmd = re.sub(r'[,!\s]*\b' + re.escape(matched_name) + r'\b[,!\s]*$', '', cmd, flags=re.IGNORECASE).strip()
-        cmd = re.sub(r'^[,\s!.-]+', '', cmd).strip()
+        # Убираем имя и лишние приветственные префиксы
+        cmd = re.sub(r'[,!\s]*\b' + re.escape(matched_name) + r'\b[,!?.\s]*', ' ', raw, flags=re.IGNORECASE).strip()
+        cmd = greeting_prefix_regex.sub('', cmd).strip()
+        cmd = re.sub(r'^[,\s!.-]+|[,\s!.-]+$', '', cmd).strip()
+        # Если ничего содержательного не осталось, считаем вызовом без команды
+        if not re.search(r'[a-zA-Zа-яА-ЯёЁ0-9]', cmd):
+            cmd = ""
         return True, cmd
 
     def _listen_loop(self):
         while self.running and self.enabled:
             try:
-                with sd.InputStream(samplerate=self.sample_rate, channels=1,
+                self.mic_device, self.mic_device_name = self._resolve_input_device()
+                base_threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
+                min_silence_ms = int(getattr(self.cfg, "HOTWORD_VAD_MIN_SILENCE_MS", 900))
+                max_duration_ms = int(getattr(self.cfg, "HOTWORD_MAX_DURATION_MS", 8000))
+                pre_roll_ms = float(getattr(self.cfg, "HOTWORD_PRE_ROLL_MS", 350))
+                vad_enabled = bool(getattr(self.cfg, "HOTWORD_VAD_ENABLED", True))
+
+                with sd.InputStream(device=self.mic_device, samplerate=self.sample_rate, channels=1,
                                     dtype='float32', blocksize=self.block_size) as stream:
-                    pre_buffer = []  # кольцевой буфер 0.35 сек до начала фразы
-                    max_pre = max(1, int(self.sample_rate * float(getattr(self.cfg, "HOTWORD_PRE_ROLL_MS", 350)) / 1000 / self.block_size))
-                    base_threshold = getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0035)
-                    vad_enabled = bool(getattr(self.cfg, "HOTWORD_VAD_ENABLED", True))
+                    self._active_stream = stream
+                    pre_buffer = []
+                    max_pre = max(1, int(self.sample_rate * pre_roll_ms / 1000 / self.block_size))
                     vad = EnergyVAD(
                         sample_rate=self.sample_rate,
                         frame_size=self.block_size,
                         threshold=base_threshold,
-                        noise_multiplier=float(getattr(self.cfg, "HOTWORD_VAD_NOISE_MULTIPLIER", 2.5)),
+                        noise_multiplier=float(getattr(self.cfg, "HOTWORD_VAD_NOISE_MULTIPLIER", 1.8)),
                         silence_multiplier=float(getattr(self.cfg, "HOTWORD_VAD_SILENCE_MULTIPLIER", 1.35)),
                         min_speech_ms=int(getattr(self.cfg, "HOTWORD_VAD_MIN_SPEECH_MS", 100)),
-                        min_silence_ms=int(getattr(self.cfg, "HOTWORD_VAD_MIN_SILENCE_MS", 500)),
+                        min_silence_ms=min_silence_ms,
                     )
 
                     while self.running and self.enabled:
-                        # A timeout must release ducking even when the user
-                        # does not say another phrase after the wake-word.
                         if self.active_listening_until and time.time() >= self.active_listening_until:
                             self.active_listening_until = 0.0
                             if getattr(self.cfg, "AUDIO_DUCKING_ENABLED", True) and hasattr(self.a, "ducker"):
                                 self.a.ducker.unduck()
 
-                        # Если Мия сейчас сама говорит вслух — не слушаем свои динамики
+                        # Когда Мия говорит: поддерживаем голосовое прерывание (barge-in: "стоп", "хватит", "замолчи", "мия")
                         if getattr(self.a.voice, "is_speaking", False):
-                            time.sleep(0.08)
+                            data, _ = stream.read(self.block_size)
+                            block = data.flatten()
+                            rms = float(np.sqrt(np.mean(block**2)))
+                            if rms >= base_threshold * 1.6:
+                                barge_blocks = [block]
+                                for _ in range(int(self.sample_rate * 1.5 / self.block_size)):
+                                    d, _ = stream.read(self.block_size)
+                                    barge_blocks.append(d.flatten())
+                                barge_audio = np.concatenate(barge_blocks)
+                                try:
+                                    barge_text = self.a.ears.transcribe(barge_audio).lower()
+                                except Exception:
+                                    barge_text = ""
+                                if any(kw in barge_text for kw in ["стоп", "хватит", "замолчи", "тихо", "молчи", "отмена", "стой", "мия"]):
+                                    print(f"[WakeWord] 🛑 Речь ассистента прервана голосовой командой: «{barge_text}»")
+                                    self.a.voice.stop()
+                                    pre_buffer.clear()
+                                    vad.reset()
+                                    continue
                             pre_buffer.clear()
                             vad.reset()
+                            time.sleep(0.04)
                             continue
 
                         data, _ = stream.read(self.block_size)
                         block = data.flatten()
                         rms = float(np.sqrt(np.mean(block**2)))
 
-                        # Адаптивный energy-VAD с hangover.  RMS remains as a
-                        # compatibility fallback when VAD is disabled.
                         speech_detected = vad.process(block) if vad_enabled else rms >= base_threshold
 
                         pre_buffer.append(block)
                         if len(pre_buffer) > max_pre:
                             pre_buffer.pop(0)
 
-                        # Обнаружен голос человека
                         if speech_detected:
                             phrase_blocks = list(pre_buffer)
                             pre_buffer.clear()
                             silence_blocks = 0
-                            max_silence = max(1, int(self.sample_rate * int(getattr(self.cfg, "HOTWORD_VAD_MIN_SILENCE_MS", 500)) / 1000 / self.block_size))
-                            max_duration = max(1, int(self.sample_rate * int(getattr(self.cfg, "HOTWORD_MAX_DURATION_MS", 6000)) / 1000 / self.block_size))
+                            max_silence = max(1, int(self.sample_rate * min_silence_ms / 1000 / self.block_size))
+                            max_duration = max(1, int(self.sample_rate * max_duration_ms / 1000 / self.block_size))
 
                             while self.running and self.enabled:
                                 if getattr(self.a.voice, "is_speaking", False):
@@ -144,10 +245,8 @@ class HotwordListener:
                                 b = d.flatten()
                                 phrase_blocks.append(b)
                                 b_rms = float(np.sqrt(np.mean(b**2)))
-                                b_speech = vad.process(b) if vad_enabled else b_rms >= max(0.004, base_threshold * 0.55)
+                                b_speech = vad.process(b) if vad_enabled else b_rms >= max(0.0008, base_threshold * 0.5)
 
-                                # Hangover prevents short pauses from cutting
-                                # the final syllable of a command.
                                 if not b_speech:
                                     silence_blocks += 1
                                 else:
@@ -156,63 +255,57 @@ class HotwordListener:
                                 if silence_blocks >= max_silence or len(phrase_blocks) >= max_duration:
                                     break
 
-                            # Если собрано больше 0.35 сек аудио
                             total_samples = len(phrase_blocks) * self.block_size
                             if total_samples >= int(self.sample_rate * 0.35):
                                 audio_arr = np.concatenate(phrase_blocks, axis=0)
                                 vad.reset()
 
-                                # Мгновенное распознавание напрямую из памяти (с авто-AGC)
                                 try:
                                     text = self.a.ears.transcribe(audio_arr)
                                 except Exception:
                                     text = ""
 
                                 if text and text.strip():
-                                    is_wake, cmd = self._extract_command(text)
+                                    raw_text = text.strip()
+                                    is_wake, cmd = self._extract_command(raw_text)
                                     now = time.time()
-                                    if now > self.active_listening_until and self.active_listening_until > 0.0:
-                                        self.active_listening_until = 0.0
-                                        if getattr(self.cfg, "AUDIO_DUCKING_ENABLED", True) and hasattr(self.a, "ducker"):
-                                            self.a.ducker.unduck()
 
+                                    # Режим активного диалога после обращения к Мие
                                     if not is_wake and now < self.active_listening_until:
-                                        # Режим активного слушания после того, как позвали "Мия"
+                                        words_check = re.findall(r'[a-zA-Zа-яА-ЯёЁ0-9]+', raw_text.lower())
+                                        if len(words_check) == 1 and len(words_check[0]) == 1 and words_check[0] not in ("я", "да"):
+                                            continue
                                         is_wake = True
-                                        cmd = text.strip()
+                                        cmd = raw_text
                                         self.active_listening_until = 0.0
 
                                     if not is_wake:
-                                        # Проверяем, не является ли это прямой командой управления ПК
                                         try:
-                                            intent = self.a.brain.check_direct_intent(text)
+                                            intent = self.a.brain.check_direct_intent(raw_text)
                                             if intent is not None:
                                                 is_wake = True
-                                                cmd = text.strip()
+                                                cmd = raw_text
                                         except Exception:
                                             pass
 
                                     if is_wake:
-                                        print(f"[WakeWord] Услышала имя/команду! Фраза: «{text}»")
+                                        print(f"[WakeWord] 🎯 Услышала речь! Фраза: «{raw_text}»")
                                         if getattr(self.cfg, "AUDIO_DUCKING_ENABLED", True) and hasattr(self.a, "ducker"):
                                             self.a.ducker.duck()
 
                                         if cmd:
-                                            # Есть команда -> выполняем через ИИ сразу без задержек
                                             self.active_listening_until = 0.0
                                             self.a._spawn(self.a.handle_user_message(cmd, speak=True, source="voice"))
                                         else:
-                                            # Просто позвали "Мия" -> звуковой сигнал и бодрый голосовой ответ
                                             async def _respond_and_arm():
                                                 if not getattr(self.a, "is_muted", False):
                                                     await self.a.voice.play_cue("wake", wait=True)
                                                     await self.a.voice.speak("Да, я слушаю!")
-                                                self.active_listening_until = time.time() + 8.0
+                                                self.active_listening_until = time.time() + 10.0
 
                                             self.a._spawn(_respond_and_arm())
-                                    else:
-                                        # Разговор без имени -> игнорируем
-                                        pass
             except Exception as e:
-                print(f"[WakeWord] Предупреждение аудиопотока: {e}")
+                print(f"[WakeWord] ⚠️ Ошибка аудиопотока ({e}), пробую переподключиться...")
                 time.sleep(1.0)
+            finally:
+                self._active_stream = None
