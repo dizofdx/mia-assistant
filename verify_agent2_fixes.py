@@ -68,6 +68,13 @@ def test_2_web_screenshot_endpoint():
     assert data.get("ok") == True, f"Ожидался ok=True, получен ответ: {data}"
     assert "path" in data and os.path.exists(data["path"]), f"Файл скриншота не существует: {data}"
 
+    # Очищаем тестовый скриншот
+    if "path" in data and os.path.exists(data["path"]):
+        try:
+            os.remove(data["path"])
+        except Exception:
+            pass
+
     print("  ✅ [ИСПРАВЛЕНО] GET /api/screenshot успешно генерирует и возвращает путь к скриншоту")
     return True
 

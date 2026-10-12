@@ -267,13 +267,29 @@ class Voice:
         self.cfg = cfg
         self.is_speaking = False
         self._speak_lock = asyncio.Lock()
-        self._silero_model = _GLOBAL_SILERO_MODEL
-        self._silero_ready = _GLOBAL_SILERO_MODEL is not None
+        self.__silero_model_inst = None
+        self.__silero_ready_flag = False
         self.profile = getattr(cfg, "VOICE_PROFILE", "anime")
         self._cue_cache = {}
         self._phrase_cache = _GLOBAL_PHRASE_CACHE
         self._init_cues()
         self._init_silero()
+
+    @property
+    def _silero_model(self):
+        return self.__silero_model_inst or _GLOBAL_SILERO_MODEL
+
+    @_silero_model.setter
+    def _silero_model(self, val):
+        self.__silero_model_inst = val
+
+    @property
+    def _silero_ready(self):
+        return self._silero_model is not None or self.__silero_ready_flag
+
+    @_silero_ready.setter
+    def _silero_ready(self, val):
+        self.__silero_ready_flag = bool(val)
 
     def set_profile(self, name):
         """Переключает профиль голоса: 'anime' (xenia), 'jarvis' (aidar), 'mia' (baya)."""

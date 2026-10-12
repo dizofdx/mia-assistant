@@ -26,6 +26,7 @@ class Memory:
             except Exception:
                 pass
             self.conn.execute("CREATE TABLE IF NOT EXISTS facts (fact TEXT, ts REAL)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_facts_ts ON facts(ts)")
             self.conn.commit()
 
     def optimize(self):

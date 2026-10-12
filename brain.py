@@ -1,6 +1,6 @@
 # brain.py — мозг: история + факты -> LLM -> инструменты -> ответ с эмоцией
+from __future__ import annotations
 import json, re, random, datetime, os, threading
-from openai import OpenAI
 from tools import TOOLS_SPEC
 
 _CLIENT_CACHE = {}
@@ -12,6 +12,7 @@ def get_openai_client(base_url: str, api_key: str, timeout: float = 15.0) -> Ope
     with _CLIENT_CACHE_LOCK:
         client = _CLIENT_CACHE.get(key)
         if client is None:
+            from openai import OpenAI
             client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=1)
             _CLIENT_CACHE[key] = client
         return client

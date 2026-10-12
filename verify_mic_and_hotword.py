@@ -133,6 +133,11 @@ def test_5_web_audio_endpoints(asst):
         asst.cfg.MIC_DEVICE = orig_mic
         asst.cfg.HOTWORD_ENERGY_THRESHOLD = orig_thresh
         asst.hotword.stop()
+        try:
+            from web_panel import _save_config_updates
+            _save_config_updates({"MIC_DEVICE": orig_mic, "HOTWORD_ENERGY_THRESHOLD": orig_thresh})
+        except Exception:
+            pass
 
     print("  ✅ [УСПЕШНО] Эндпоинты /api/audio/* работают штатно")
     return True

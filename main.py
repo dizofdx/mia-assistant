@@ -60,14 +60,6 @@ from memory import Memory
 from tools import Tools
 from brain import Brain
 from voice import Voice
-from voice_input import Ears
-from avatar import Avatar
-from scenarios import ScenarioEngine
-from visual_commands import VisualCommandManager
-from tg_bot import TGBot
-from web_panel import start_web
-from hotword import HotwordListener
-from tray import SystemTray
 
 class Assistant:
     def __init__(self):
@@ -78,16 +70,93 @@ class Assistant:
         self.tools = Tools(self)
         self.brain = Brain(cfg, self.memory, self.tools)
         self.voice = Voice(cfg)
-        self.ears = Ears(cfg)
-        self.avatar = Avatar(cfg)
-        self.scenarios = ScenarioEngine(self)
-        self.vc_manager = VisualCommandManager(self)
-        self.tg = TGBot(self)
-        self.hotword = HotwordListener(self)
-        self.tray = SystemTray(self)
+        self._ears = None
+        self._avatar = None
+        self._scenarios = None
+        self._vc_manager = None
+        self._tg = None
+        self._hotword = None
+        self._tray = None
         self.ducker = self.tools.ducker
         self.is_muted = False
         self._ensure_ollama()
+
+    @property
+    def ears(self):
+        if self._ears is None:
+            from voice_input import Ears
+            self._ears = Ears(self.cfg)
+        return self._ears
+
+    @ears.setter
+    def ears(self, val):
+        self._ears = val
+
+    @property
+    def avatar(self):
+        if self._avatar is None:
+            from avatar import Avatar
+            self._avatar = Avatar(self.cfg)
+        return self._avatar
+
+    @avatar.setter
+    def avatar(self, val):
+        self._avatar = val
+
+    @property
+    def scenarios(self):
+        if self._scenarios is None:
+            from scenarios import ScenarioEngine
+            self._scenarios = ScenarioEngine(self)
+        return self._scenarios
+
+    @scenarios.setter
+    def scenarios(self, val):
+        self._scenarios = val
+
+    @property
+    def vc_manager(self):
+        if self._vc_manager is None:
+            from visual_commands import VisualCommandManager
+            self._vc_manager = VisualCommandManager(self)
+        return self._vc_manager
+
+    @vc_manager.setter
+    def vc_manager(self, val):
+        self._vc_manager = val
+
+    @property
+    def tg(self):
+        if self._tg is None:
+            from tg_bot import TGBot
+            self._tg = TGBot(self)
+        return self._tg
+
+    @tg.setter
+    def tg(self, val):
+        self._tg = val
+
+    @property
+    def hotword(self):
+        if self._hotword is None:
+            from hotword import HotwordListener
+            self._hotword = HotwordListener(self)
+        return self._hotword
+
+    @hotword.setter
+    def hotword(self, val):
+        self._hotword = val
+
+    @property
+    def tray(self):
+        if self._tray is None:
+            from tray import SystemTray
+            self._tray = SystemTray(self)
+        return self._tray
+
+    @tray.setter
+    def tray(self, val):
+        self._tray = val
 
     def _ensure_ollama(self):
         def _check():
@@ -176,6 +245,7 @@ class Assistant:
     def run_scenario_async(self, name): self._spawn(self.scenarios.run(name))
 
     async def start(self):
+        from web_panel import start_web
         self.loop = asyncio.get_running_loop()
         await self.avatar.connect()
         for s in self.scenarios.list_all():
@@ -189,6 +259,33 @@ class Assistant:
             start_web(self),
             self.scenarios.scheduler_loop(),
         )
+
+def __getattr__(name):
+    if name == "TGBot":
+        from tg_bot import TGBot
+        return TGBot
+    if name == "HotwordListener":
+        from hotword import HotwordListener
+        return HotwordListener
+    if name == "SystemTray":
+        from tray import SystemTray
+        return SystemTray
+    if name == "Ears":
+        from voice_input import Ears
+        return Ears
+    if name == "Avatar":
+        from avatar import Avatar
+        return Avatar
+    if name == "ScenarioEngine":
+        from scenarios import ScenarioEngine
+        return ScenarioEngine
+    if name == "VisualCommandManager":
+        from visual_commands import VisualCommandManager
+        return VisualCommandManager
+    if name == "start_web":
+        from web_panel import start_web
+        return start_web
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 if __name__ == "__main__":
     asyncio.run(Assistant().start())

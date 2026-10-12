@@ -1110,7 +1110,6 @@ class Tools:
 
     def tool_ask_expert_ai(self, prompt, on_token=None):
         """Отправляет сложный вопрос во внешнюю модель DeepSeek или локальному эксперту с поддержкой стриминга токенов."""
-        from openai import OpenAI
         cfg = self.a.cfg
 
         api_key = getattr(cfg, "DEEPSEEK_API_KEY", "").strip()

@@ -35,6 +35,24 @@ def get_local_ip() -> str:
     finally:
         s.close()
 
+def _save_config_updates(updates: dict):
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
+    if not os.path.exists(config_path):
+        return
+    try:
+        import re
+        with open(config_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        for key, val in updates.items():
+            pattern = rf'^{key}\s*=.*$'
+            repr_val = repr(val)
+            if re.search(pattern, content, flags=re.MULTILINE):
+                content = re.sub(pattern, f"{key} = {repr_val}", content, flags=re.MULTILINE)
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception as e:
+        print(f"[Config] Ошибка сохранения обновлений: {e}")
+
 def create_app(assistant):
     app = FastAPI(title="Mia Web Panel")
     eng = assistant.scenarios
@@ -698,24 +716,6 @@ def create_app(assistant):
         except Exception as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
-    def _save_config_updates(updates: dict):
-        import re
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
-        if not os.path.exists(config_path):
-            return
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            for key, val in updates.items():
-                pattern = rf'^{key}\s*=.*$'
-                repr_val = repr(val)
-                if re.search(pattern, content, flags=re.MULTILINE):
-                    content = re.sub(pattern, f"{key} = {repr_val}", content, flags=re.MULTILINE)
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.write(content)
-        except Exception as e:
-            print(f"[Config] Ошибка сохранения обновлений: {e}")
-
     @app.post("/api/audio/set_mic")
     async def set_mic(req: Request):
         try:
@@ -786,8 +786,15 @@ def create_app(assistant):
             def _record():
                 return sd.rec(frames, samplerate=stream_rate, channels=1, dtype="float32", device=dev_idx)
 
-            rec_data = await asyncio.to_thread(_record)
-            await asyncio.to_thread(sd.wait)
+            try:
+                rec_data = await asyncio.to_thread(_record)
+                await asyncio.to_thread(sd.wait)
+            except Exception:
+                try:
+                    rec_data = await asyncio.to_thread(lambda: sd.rec(frames, samplerate=stream_rate, channels=1, dtype="float32"))
+                    await asyncio.to_thread(sd.wait)
+                except Exception:
+                    rec_data = np.zeros((frames, 1), dtype=np.float32)
             arr = rec_data.flatten()
             if stream_rate != 16000:
                 target_len = int(len(arr) * 16000 / stream_rate)

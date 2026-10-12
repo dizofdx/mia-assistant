@@ -151,6 +151,14 @@ def test_5_xss_upload_blocked():
     files_ok = {"file": ("avatar.png", png_payload, "image/png")}
     res_ok = client.post("/api/upload_mascot_2d", files=files_ok)
     assert res_ok.status_code == 200, f"Ожидался код 200 для PNG, получен {res_ok.status_code}"
+
+    # Очищаем тестовый артефакт после проверки
+    mascot_artifact = os.path.join(PROJECT_DIR, "static", "custom_mascot_2d.png")
+    if os.path.exists(mascot_artifact):
+        try:
+            os.remove(mascot_artifact)
+        except Exception:
+            pass
     print("  ✅ [ИСПРАВЛЕНО] Загрузка .html отклонена с HTTP 415, разрешены только изображения")
     return True
 
