@@ -469,6 +469,29 @@ class TGBot:
         except Exception as e:
             await msg.answer(f"⚠️ Ошибка выполнения сценария: {e}")
 
+    async def _execute_scenario_or_flow(self, name: str, msg: Message):
+        if not await self._check_admin(msg):
+            return
+        if hasattr(self.a, "vc_manager"):
+            v_res = await self.a.vc_manager.execute_flow(name)
+            if v_res.get("ok"):
+                flow_title = v_res.get("name", name)
+                await msg.answer(f"✅ Команда <b>«{flow_title}»</b> успешно выполнена на ПК!", parse_mode="HTML")
+                return
+
+        s = self.a.scenarios.get(name)
+        if s:
+            real_name = s.get("name", name)
+            await msg.answer(f"▶️ Запускаю сценарий: <b>{real_name}</b>...", parse_mode="HTML")
+            try:
+                res = await self.a.scenarios.run(real_name)
+                await msg.answer(f"✅ {res}", parse_mode="HTML")
+            except Exception as e:
+                await msg.answer(f"⚠️ Ошибка выполнения сценария: {e}")
+            return
+
+        await msg.answer(f"❌ Команда или сценарий <b>«{name}»</b> не найдены.", parse_mode="HTML")
+
     async def cmd_del(self, msg: Message):
         if not await self._check_admin(msg):
             return
@@ -554,8 +577,7 @@ class TGBot:
             "🎯 фокус"
         ]
         if txt == "🎯 Фокус" or low in focus_triggers or any(low.startswith(p) for p in ["включи режим фокус", "запусти режим фокус", "включи фокус", "запусти фокус"]):
-            msg.text = "/run фокус"
-            await self.cmd_run(msg)
+            await self._execute_scenario_or_flow("фокус", msg)
             return
 
         # Быстрые кнопки и триггеры сценария «Отдых»
@@ -565,8 +587,7 @@ class TGBot:
             "🎮 отдых"
         ]
         if txt == "🎮 Отдых" or low in rest_triggers or any(low.startswith(p) for p in ["включи режим отдых", "запусти режим отдых", "включи отдых", "запусти отдых"]):
-            msg.text = "/run отдых"
-            await self.cmd_run(msg)
+            await self._execute_scenario_or_flow("отдых", msg)
             return
 
         # Управление медиа и громкостью текстом

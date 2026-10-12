@@ -258,6 +258,7 @@ class Assistant:
             self.tg.run(),
             start_web(self),
             self.scenarios.scheduler_loop(),
+            return_exceptions=True,
         )
 
 def __getattr__(name):

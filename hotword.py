@@ -96,7 +96,7 @@ class HotwordListener:
                     hostapi = ""
                 if hostapi != "Windows WDM-KS":
                     return idx, dev.get("name", f"Устройство {idx}")
-        return None, "По умолчанию"
+        return None, "Не обнаружено"
 
     def start(self):
         if self.running or not self.enabled:
@@ -195,9 +195,32 @@ class HotwordListener:
     def _listen_loop(self):
         was_speaking = False
         echo_drain_blocks = 0
+        no_device_logged = False
         while self.running and self.enabled:
             try:
                 self.mic_device, self.mic_device_name = self._resolve_input_device()
+                if self.mic_device is None:
+                    def_in = -1
+                    try:
+                        def_in = sd.default.device[0]
+                    except Exception:
+                        pass
+                    if def_in is None or def_in < 0:
+                        if not no_device_logged:
+                            print("[WakeWord] ⚠️ Микрофон не обнаружен в системе (устройство ввода отсутствует или выключено). Ожидание подключения...")
+                            no_device_logged = True
+                        try:
+                            sd._terminate()
+                            sd._initialize()
+                        except Exception:
+                            pass
+                        time.sleep(3.0)
+                        continue
+
+                if no_device_logged:
+                    print(f"[WakeWord] 🎤 Микрофон обнаружен и активирован: [{self.mic_device}] {self.mic_device_name}")
+                    no_device_logged = False
+
                 stream_rate = self._find_supported_samplerate(self.mic_device)
                 base_threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
                 min_silence_ms = int(getattr(self.cfg, "HOTWORD_VAD_MIN_SILENCE_MS", 900))
@@ -358,7 +381,14 @@ class HotwordListener:
 
                                             self.a._spawn(_respond_and_arm())
             except Exception as e:
-                print(f"[WakeWord] ⚠️ Ошибка аудиопотока ({e}), пробую переподключиться...")
-                time.sleep(1.0)
+                err_msg = str(e)
+                if not no_device_logged:
+                    print(f"[WakeWord] ⚠️ Ошибка аудиопотока ({err_msg}), пробую переподключиться...")
+                try:
+                    sd._terminate()
+                    sd._initialize()
+                except Exception:
+                    pass
+                time.sleep(2.0)
             finally:
                 self._active_stream = None

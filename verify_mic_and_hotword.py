@@ -59,7 +59,7 @@ def test_2_resolve_input_device(asst):
     hl = asst.hotword
 
     idx, name = hl._resolve_input_device()
-    assert idx is not None or name == "По умолчанию"
+    assert idx is not None or name in ("По умолчанию", "Не обнаружено")
     print(f"  Определен микрофон: [{idx}] {name}")
     print("  ✅ [УСПЕШНО] Устройство ввода микрофона определено корректно")
     return True
