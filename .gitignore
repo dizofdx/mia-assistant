@@ -35,6 +35,8 @@ memory/
 # Scratch / temp
 scratch/
 projects/
+audit_results.json
+static/custom_mascot_2d.*
 
 # OS
 Thumbs.db
@@ -45,6 +47,7 @@ Desktop.ini
 *.png
 !static/**/*.png
 !docs/**/*.png
+static/custom_mascot_2d.*
 
 # Audio test files
 *.mp3

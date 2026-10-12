@@ -956,18 +956,19 @@ class Tools:
 
     def tool_write_code(self, task, filename):
         """Отправляет задачу в ИИ-кодер (DeepSeek или локальную модель), получает код, сохраняет в файл."""
-        from openai import OpenAI
+        from brain import get_openai_client
 
         cfg = self.a.cfg
         ds_key = getattr(cfg, "DEEPSEEK_API_KEY", "").strip()
         if ds_key and not ds_key.startswith("sk-твой"):
             base_url = getattr(cfg, "DEEPSEEK_BASE_URL", "https://api.deepseek.com")
             model = getattr(cfg, "DEEPSEEK_MODEL", "deepseek-chat")
-            client = OpenAI(base_url=base_url, api_key=ds_key)
+            client = get_openai_client(base_url, ds_key, timeout=30.0)
         else:
-            client = OpenAI(
-                base_url=getattr(cfg, "CODER_BASE_URL", cfg.LLM_BASE_URL),
-                api_key=getattr(cfg, "CODER_API_KEY", cfg.LLM_API_KEY),
+            client = get_openai_client(
+                getattr(cfg, "CODER_BASE_URL", cfg.LLM_BASE_URL),
+                getattr(cfg, "CODER_API_KEY", cfg.LLM_API_KEY),
+                timeout=30.0,
             )
             model = getattr(cfg, "CODER_MODEL", cfg.LLM_MODEL)
 
@@ -1116,10 +1117,12 @@ class Tools:
         base_url = getattr(cfg, "DEEPSEEK_BASE_URL", "https://discovery-api.intern-ai.org.cn/v1")
         model = getattr(cfg, "DEEPSEEK_MODEL", "deepseek-v4-flash-0731")
 
+        from brain import get_openai_client
+
         if api_key and not api_key.startswith("sk-твой"):
+            client = get_openai_client(base_url, api_key, timeout=25.0)
             for m in [model, "deepseek-v4-flash-0731", "qwen3.8-27b"]:
                 try:
-                    client = OpenAI(base_url=base_url, api_key=api_key)
                     if on_token:
                         resp = client.chat.completions.create(
                             model=m,
@@ -1158,7 +1161,7 @@ class Tools:
         # Локальный эксперт через Ollama
         try:
             local_model = getattr(cfg, "EXPERT_LOCAL_MODEL", cfg.LLM_MODEL)
-            client = OpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+            client = get_openai_client(cfg.LLM_BASE_URL, cfg.LLM_API_KEY, timeout=20.0)
             resp = client.chat.completions.create(
                 model=local_model,
                 messages=[

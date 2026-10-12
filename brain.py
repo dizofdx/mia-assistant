@@ -1,7 +1,20 @@
 # brain.py — мозг: история + факты -> LLM -> инструменты -> ответ с эмоцией
-import json, re, random, datetime, os
+import json, re, random, datetime, os, threading
 from openai import OpenAI
 from tools import TOOLS_SPEC
+
+_CLIENT_CACHE = {}
+_CLIENT_CACHE_LOCK = threading.Lock()
+
+def get_openai_client(base_url: str, api_key: str, timeout: float = 15.0) -> OpenAI:
+    """Кэширует и переиспользует HTTP-клиенты OpenAI/Ollama для мгновенного отклика без повторных инициализаций."""
+    key = (base_url, api_key, timeout)
+    with _CLIENT_CACHE_LOCK:
+        client = _CLIENT_CACHE.get(key)
+        if client is None:
+            client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=1)
+            _CLIENT_CACHE[key] = client
+        return client
 
 EMOTION_TAG_RE = re.compile(r'\[\s*(РАДОСТЬ|ГРУСТЬ|СПОКОЙСТВИЕ|ЗЛОСТЬ|УДИВЛЕНИЕ|СМУЩЕНИЕ|EMOTION|JOY|SADNESS|CALM|ANGER)[^\]]*\](?!\()\s*', re.IGNORECASE)
 MIA_PREFIX_RE  = re.compile(r'^(мия|миечка|мика|mia|эй мия|привет мия|слушай мия|меня|мне|миа|мию|мие)[,\s!.-]*', re.IGNORECASE)
@@ -13,7 +26,8 @@ STOP_MARKERS   = ("\nassistant", "\nuser", "\nпользователь:", "<|im_
 
 class Brain:
     def __init__(self, cfg, memory, tools):
-        self.client = OpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+        timeout = float(getattr(cfg, "LLM_TIMEOUT", 15.0))
+        self.client = get_openai_client(cfg.LLM_BASE_URL, cfg.LLM_API_KEY, timeout=timeout)
         self.cfg, self.memory, self.tools = cfg, memory, tools
 
     def _build_messages(self):

@@ -8,7 +8,11 @@ class Memory:
         with self.lock:
             self.conn = sqlite3.connect(path, check_same_thread=False)
             self.conn.execute("PRAGMA journal_mode=WAL")
-            self.conn.execute("PRAGMA busy_timeout=5000")
+            self.conn.execute("PRAGMA synchronous = NORMAL")
+            self.conn.execute("PRAGMA cache_size = -64000")
+            self.conn.execute("PRAGMA mmap_size = 268435456")
+            self.conn.execute("PRAGMA temp_store = MEMORY")
+            self.conn.execute("PRAGMA busy_timeout = 5000")
             self.conn.execute("CREATE TABLE IF NOT EXISTS messages (role TEXT, content TEXT, ts REAL, source TEXT, emotion TEXT)")
             # Индекс для ускорения выборки истории
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(ts)")
@@ -23,6 +27,16 @@ class Memory:
                 pass
             self.conn.execute("CREATE TABLE IF NOT EXISTS facts (fact TEXT, ts REAL)")
             self.conn.commit()
+
+    def optimize(self):
+        """Выполняет сжатие и чекпоинт WAL-журнала для максимальной производительности."""
+        with self.lock:
+            try:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.conn.execute("VACUUM")
+                self.conn.commit()
+            except Exception:
+                pass
 
     def add_message(self, role, content, source="other", emotion=""):
         with self.lock:

@@ -257,16 +257,21 @@ EMOTION_VOICE_MODS = {
     "СПОКОЙСТВИЕ": {"rate": "+8%",  "pitch": "+14Hz"},
 }
 
+import threading
+_GLOBAL_SILERO_MODEL = None
+_GLOBAL_SILERO_LOCK = threading.Lock()
+_GLOBAL_PHRASE_CACHE = {}
+
 class Voice:
     def __init__(self, cfg):
         self.cfg = cfg
         self.is_speaking = False
         self._speak_lock = asyncio.Lock()
-        self._silero_model = None
-        self._silero_ready = False
+        self._silero_model = _GLOBAL_SILERO_MODEL
+        self._silero_ready = _GLOBAL_SILERO_MODEL is not None
         self.profile = getattr(cfg, "VOICE_PROFILE", "anime")
         self._cue_cache = {}
-        self._phrase_cache = {}
+        self._phrase_cache = _GLOBAL_PHRASE_CACHE
         self._init_cues()
         self._init_silero()
 
@@ -385,71 +390,87 @@ class Voice:
             return await _try_silero()
 
     def _init_silero(self):
+        global _GLOBAL_SILERO_MODEL, _GLOBAL_PHRASE_CACHE
+        if _GLOBAL_SILERO_MODEL is not None:
+            self._silero_model = _GLOBAL_SILERO_MODEL
+            self._silero_ready = True
+            self._phrase_cache = _GLOBAL_PHRASE_CACHE
+            return
+
         def _loader():
-            try:
-                import torch
+            global _GLOBAL_SILERO_MODEL, _GLOBAL_PHRASE_CACHE
+            with _GLOBAL_SILERO_LOCK:
+                if _GLOBAL_SILERO_MODEL is not None:
+                    self._silero_model = _GLOBAL_SILERO_MODEL
+                    self._silero_ready = True
+                    self._phrase_cache = _GLOBAL_PHRASE_CACHE
+                    return
                 try:
-                    torch.set_num_threads(4)
-                except Exception:
-                    pass
-                model_path = os.path.join(os.path.dirname(__file__), "models", "v4_ru.pt")
-                if not os.path.exists(model_path):
-                    import urllib.request
-                    os.makedirs(os.path.dirname(model_path), exist_ok=True)
-                    urllib.request.urlretrieve("https://models.silero.ai/models/tts/ru/v4_ru.pt", model_path)
-                device = torch.device("cpu")
-                model = torch.package.PackageImporter(model_path).load_pickle("tts_models", "model")
-                model.to(device)
-                self._silero_model = model
-                self._silero_ready = True
-                spk = getattr(self.cfg, "SILERO_SPEAKER", "xenia")
-                sr = getattr(self.cfg, "SILERO_SAMPLE_RATE", 24000)
-
-                try:
-                    print(f"[Silero] TTS ready (fast 24kHz mode)! Speaker: {spk}")
-                except Exception:
-                    pass
-
-                # Предварительный прогрев и кэширование типовых фраз для 0 мс мгновенного отклика:
-                try:
-                    with torch.inference_mode():
-                        _ = model.apply_tts(text="Мия", speaker=spk, sample_rate=sr, put_accent=False, put_yo=False)
-                except Exception:
-                    pass
-
-                # Предзагрузка типовых фраз в RAM-кэш
-                common_phrases = [
-                    "Да, я слушаю!",
-                    "Врубаю «Мою Волну» в Яндекс Музыке! 🎵",
-                    "Поставила на паузу.",
-                    "Продолжаю воспроизведение!",
-                    "Включила следующий трек.",
-                    "Вернула предыдущий трек.",
-                    "Сделала погромче!",
-                    "Сделала потише!",
-                    "Выключила звук.",
-                    "Включила звук обратно.",
-                    "Все окна свернуты.",
-                    "Компьютер заблокирован."
-                ]
-                for p in common_phrases:
+                    import torch
                     try:
-                        clean_p = clean_for_speech(p)
-                        key = (clean_p, spk, sr)
-                        if key not in self._phrase_cache:
-                            with torch.inference_mode():
-                                audio_t = model.apply_tts(text=clean_p, speaker=spk, sample_rate=sr, put_accent=False, put_yo=False)
-                                self._phrase_cache[key] = audio_t.numpy()
-                        self._phrase_cache[(p, spk, sr)] = self._phrase_cache[key]
+                        torch.set_num_threads(4)
                     except Exception:
                         pass
-            except Exception as e:
-                try:
-                    import traceback
-                    traceback.print_exc()
-                    print(f"[Silero] Load error: {e}")
-                except Exception:
-                    pass
+                    model_path = os.path.join(os.path.dirname(__file__), "models", "v4_ru.pt")
+                    if not os.path.exists(model_path):
+                        import urllib.request
+                        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                        urllib.request.urlretrieve("https://models.silero.ai/models/tts/ru/v4_ru.pt", model_path)
+                    device = torch.device("cpu")
+                    model = torch.package.PackageImporter(model_path).load_pickle("tts_models", "model")
+                    model.to(device)
+                    _GLOBAL_SILERO_MODEL = model
+                    self._silero_model = model
+                    self._silero_ready = True
+                    self._phrase_cache = _GLOBAL_PHRASE_CACHE
+                    spk = getattr(self.cfg, "SILERO_SPEAKER", "xenia")
+                    sr = getattr(self.cfg, "SILERO_SAMPLE_RATE", 24000)
+
+                    try:
+                        print(f"[Silero] TTS ready (fast 24kHz mode)! Speaker: {spk}")
+                    except Exception:
+                        pass
+
+                    # Предварительный прогрев
+                    try:
+                        with torch.inference_mode():
+                            _ = model.apply_tts(text="Мия", speaker=spk, sample_rate=sr, put_accent=False, put_yo=False)
+                    except Exception:
+                        pass
+
+                    # Предзагрузка типовых фраз в RAM-кэш для 0 мс мгновенного отклика
+                    common_phrases = [
+                        "Да, я слушаю!",
+                        "Врубаю «Мою Волну» в Яндекс Музыке! 🎵",
+                        "Поставила на паузу.",
+                        "Продолжаю воспроизведение!",
+                        "Включила следующий трек.",
+                        "Вернула предыдущий трек.",
+                        "Сделала погромче!",
+                        "Сделала потише!",
+                        "Выключила звук.",
+                        "Включила звук обратно.",
+                        "Все окна свернуты.",
+                        "Компьютер заблокирован."
+                    ]
+                    for p in common_phrases:
+                        try:
+                            clean_p = clean_for_speech(p)
+                            key = (clean_p, spk, sr)
+                            if key not in _GLOBAL_PHRASE_CACHE:
+                                with torch.inference_mode():
+                                    audio_t = model.apply_tts(text=clean_p, speaker=spk, sample_rate=sr, put_accent=False, put_yo=False)
+                                    _GLOBAL_PHRASE_CACHE[key] = audio_t.numpy()
+                            _GLOBAL_PHRASE_CACHE[(p, spk, sr)] = _GLOBAL_PHRASE_CACHE[key]
+                        except Exception:
+                            pass
+                except Exception as e:
+                    try:
+                        import traceback
+                        traceback.print_exc()
+                        print(f"[Silero] Load error: {e}")
+                    except Exception:
+                        pass
 
         import threading
         threading.Thread(target=_loader, daemon=True).start()

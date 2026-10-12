@@ -27,8 +27,36 @@ try:
 except Exception:
     pass
 
+import threading
 import ctranslate2
 from faster_whisper import WhisperModel
+
+_GLOBAL_WHISPER_MODELS = {}
+_GLOBAL_WHISPER_LOCK = threading.Lock()
+
+def get_whisper_model(model_name: str, device: str, compute_type: str) -> WhisperModel:
+    key = (model_name, device, compute_type)
+    with _GLOBAL_WHISPER_LOCK:
+        if key in _GLOBAL_WHISPER_MODELS:
+            return _GLOBAL_WHISPER_MODELS[key]
+
+        try:
+            print(f"[Whisper] Loading model ({model_name}) on {'GPU (CUDA)' if device == 'cuda' else 'CPU'} [{compute_type}]...")
+        except Exception:
+            pass
+        model = WhisperModel(model_name, device=device, compute_type=compute_type)
+        # Быстрый прогрев для исключения холодного старта при первом запросе
+        try:
+            warm_buf = np.zeros(1600, dtype=np.float32)
+            _ = list(model.transcribe(warm_buf, beam_size=1, language="ru"))
+        except Exception:
+            pass
+        try:
+            print(f"[Whisper] Speech recognition ready on {'GPU (CUDA)' if device == 'cuda' else 'CPU'}!")
+        except Exception:
+            pass
+        _GLOBAL_WHISPER_MODELS[key] = model
+        return model
 
 class Ears:
     def __init__(self, cfg):
@@ -50,25 +78,13 @@ class Ears:
         compute_type = "float16" if has_cuda else "int8"
 
         try:
-            try:
-                print(f"[Whisper] Loading model ({self.model_name}) on {'GPU (CUDA)' if has_cuda else 'CPU'} [{compute_type}]...")
-            except Exception:
-                pass
-            self.model = WhisperModel(self.model_name, device=device, compute_type=compute_type)
-            try:
-                print(f"[Whisper] Speech recognition ready on {'GPU (CUDA)' if has_cuda else 'CPU'}!")
-            except Exception:
-                pass
+            self.model = get_whisper_model(self.model_name, device, compute_type)
         except Exception as e:
             try:
                 print(f"[Whisper] Failed on {device}: {e}, falling back to CPU...")
             except Exception:
                 pass
-            self.model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
-            try:
-                print("[Whisper] Speech recognition ready on CPU [int8]!")
-            except Exception:
-                pass
+            self.model = get_whisper_model(self.model_name, "cpu", "int8")
 
     def _prepare_audio(self, audio_or_path):
         """Prepare a captured NumPy buffer without amplifying room noise."""
@@ -137,7 +153,7 @@ class Ears:
                 pass
             try:
                 if self._cpu_model is None:
-                    self._cpu_model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
+                    self._cpu_model = get_whisper_model(self.model_name, "cpu", "int8")
                 segments, _ = self._transcribe_model(self._cpu_model, prepared)
                 return " ".join(s.text for s in segments).strip()
             except Exception as e_cpu:
