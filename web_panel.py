@@ -694,7 +694,8 @@ def create_app(assistant):
                         "channels": d.get("max_input_channels", 0),
                         "samplerate": d.get("default_samplerate", 44100.0),
                         "is_default": (idx == default_in),
-                        "is_selected": (idx == current_mic or (isinstance(current_mic, str) and current_mic.lower() in d.get("name", "").lower()))
+                        "is_selected": (idx == current_mic or (isinstance(current_mic, str) and current_mic.lower() in d.get("name", "").lower())),
+                        "is_usable": (api_name != "Windows WDM-KS")
                     })
                 if d.get("max_output_channels", 0) > 0:
                     outputs.append({
@@ -729,7 +730,7 @@ def create_app(assistant):
         threshold = data.get("threshold")
 
         updates = {}
-        if dev is not None:
+        if "device" in data:
             assistant.cfg.MIC_DEVICE = dev
             updates["MIC_DEVICE"] = dev
         if threshold is not None:
@@ -767,6 +768,17 @@ def create_app(assistant):
                     dev_name = sd.query_devices(dev_idx).get("name", "По умолчанию") if dev_idx is not None else "По умолчанию"
                 except Exception:
                     dev_name = "По умолчанию"
+
+            if dev_idx is None:
+                return {
+                    "ok": True,
+                    "device_index": None,
+                    "device_name": dev_name or "Не обнаружено",
+                    "sample_rate": 16000,
+                    "rms": 0.0,
+                    "peak": 0.0,
+                    "heard": ""
+                }
 
             stream_rate = 16000
             if hasattr(assistant.hotword, "_find_supported_samplerate"):

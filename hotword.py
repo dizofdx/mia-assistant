@@ -49,6 +49,16 @@ class HotwordListener:
             samples
         ).astype(np.float32)
 
+    @staticmethod
+    def _is_usable_device(dev):
+        if not dev or dev.get("max_input_channels", 0) <= 0:
+            return False
+        try:
+            hostapi = sd.query_hostapis(dev.get("hostapi", 0))["name"]
+        except Exception:
+            hostapi = ""
+        return hostapi != "Windows WDM-KS"
+
     def _resolve_input_device(self):
         """Определяет корректный индекс входного устройства микрофона."""
         target = getattr(self.cfg, "MIC_DEVICE", None)
@@ -61,41 +71,28 @@ class HotwordListener:
             # 1. Если указан точный числовой индекс
             if isinstance(target, int) and 0 <= target < len(devices):
                 dev = devices[target]
-                if dev.get("max_input_channels", 0) > 0:
+                if self._is_usable_device(dev):
                     return target, dev.get("name", f"Устройство {target}")
             # 2. Если указана строка (имя или часть имени)
             target_str = str(target).lower().strip()
             for idx, dev in enumerate(devices):
-                if dev.get("max_input_channels", 0) > 0:
-                    try:
-                        hostapi = sd.query_hostapis(dev.get("hostapi", 0))["name"]
-                    except Exception:
-                        hostapi = ""
-                    if hostapi != "Windows WDM-KS" and target_str in dev.get("name", "").lower():
-                        return idx, dev.get("name", f"Устройство {idx}")
-            for idx, dev in enumerate(devices):
-                if dev.get("max_input_channels", 0) > 0 and target_str in dev.get("name", "").lower():
+                if self._is_usable_device(dev) and target_str in dev.get("name", "").lower():
                     return idx, dev.get("name", f"Устройство {idx}")
 
         # По умолчанию берем системный дефолт из sounddevice
         try:
             def_dev = sd.default.device[0]
-            if def_dev is not None and def_dev >= 0 and def_dev < len(devices):
+            if def_dev is not None and 0 <= def_dev < len(devices):
                 dev = devices[def_dev]
-                if dev.get("max_input_channels", 0) > 0:
+                if self._is_usable_device(dev):
                     return def_dev, dev.get("name", f"Устройство {def_dev}")
         except Exception:
             pass
 
         # Первое подходящее устройство
         for idx, dev in enumerate(devices):
-            if dev.get("max_input_channels", 0) > 0:
-                try:
-                    hostapi = sd.query_hostapis(dev.get("hostapi", 0))["name"]
-                except Exception:
-                    hostapi = ""
-                if hostapi != "Windows WDM-KS":
-                    return idx, dev.get("name", f"Устройство {idx}")
+            if self._is_usable_device(dev):
+                return idx, dev.get("name", f"Устройство {idx}")
         return None, "Не обнаружено"
 
     def start(self):
@@ -200,26 +197,16 @@ class HotwordListener:
             try:
                 self.mic_device, self.mic_device_name = self._resolve_input_device()
                 if self.mic_device is None:
-                    def_in = -1
+                    if not no_device_logged:
+                        print("[WakeWord] ⚠️ Микрофон не обнаружен в системе (устройство ввода отсутствует или выключено). Ожидание подключения...")
+                        no_device_logged = True
                     try:
-                        def_in = sd.default.device[0]
+                        sd._terminate()
+                        sd._initialize()
                     except Exception:
                         pass
-                    if def_in is None or def_in < 0:
-                        if not no_device_logged:
-                            print("[WakeWord] ⚠️ Микрофон не обнаружен в системе (устройство ввода отсутствует или выключено). Ожидание подключения...")
-                            no_device_logged = True
-                        try:
-                            sd._terminate()
-                            sd._initialize()
-                        except Exception:
-                            pass
-                        time.sleep(3.0)
-                        continue
-
-                if no_device_logged:
-                    print(f"[WakeWord] 🎤 Микрофон обнаружен и активирован: [{self.mic_device}] {self.mic_device_name}")
-                    no_device_logged = False
+                    time.sleep(3.0)
+                    continue
 
                 stream_rate = self._find_supported_samplerate(self.mic_device)
                 base_threshold = float(getattr(self.cfg, "HOTWORD_ENERGY_THRESHOLD", 0.0015))
@@ -233,6 +220,9 @@ class HotwordListener:
                 with sd.InputStream(device=self.mic_device, samplerate=stream_rate, channels=1,
                                     dtype='float32', blocksize=read_block_size) as stream:
                     self._active_stream = stream
+                    if no_device_logged:
+                        print(f"[WakeWord] 🎤 Микрофон обнаружен и активирован: [{self.mic_device}] {self.mic_device_name}")
+                        no_device_logged = False
                     pre_buffer = []
                     max_pre = max(1, int(self.sample_rate * pre_roll_ms / 1000 / self.block_size))
                     vad = EnergyVAD(
@@ -384,6 +374,7 @@ class HotwordListener:
                 err_msg = str(e)
                 if not no_device_logged:
                     print(f"[WakeWord] ⚠️ Ошибка аудиопотока ({err_msg}), пробую переподключиться...")
+                    no_device_logged = True
                 try:
                     sd._terminate()
                     sd._initialize()

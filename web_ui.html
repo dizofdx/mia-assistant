@@ -4039,14 +4039,29 @@
         const sel = document.getElementById('mic-device-select');
         if (sel && data.inputs) {
           sel.innerHTML = '';
+          const autoOpt = document.createElement('option');
+          autoOpt.value = '';
+          autoOpt.textContent = '🔄 Автовыбор (системный микрофон по умолчанию)';
+          if (data.current_mic === null || data.current_mic === undefined) autoOpt.selected = true;
+          sel.appendChild(autoOpt);
+
           data.inputs.forEach(dev => {
             const opt = document.createElement('option');
             opt.value = dev.index;
             const defMark = dev.is_default ? ' (По умолчанию)' : '';
-            opt.textContent = `[#${dev.index}] ${dev.name}${defMark} [${dev.hostapi}]`;
+            const unsuppMark = (dev.hostapi === 'Windows WDM-KS') ? ' ⚠️ (WDM-KS не поддерживается)' : '';
+            opt.textContent = `[#${dev.index}] ${dev.name}${defMark}${unsuppMark} [${dev.hostapi}]`;
+            if (dev.hostapi === 'Windows WDM-KS') opt.disabled = true;
             if (dev.is_selected) opt.selected = true;
             sel.appendChild(opt);
           });
+          if (data.inputs.length === 0) {
+            const noOpt = document.createElement('option');
+            noOpt.value = '';
+            noOpt.textContent = '⚠️ Микрофон не обнаружен (подключите наушники/гарнитуру)';
+            noOpt.disabled = true;
+            sel.appendChild(noOpt);
+          }
         }
         if (data.threshold !== undefined) {
           const range = document.getElementById('mic-threshold-range');
@@ -4074,16 +4089,17 @@
     }
 
     async function updateMicDevice(devIdx) {
-      if (devIdx === '' || devIdx === null) return;
+      const targetVal = (devIdx === '' || devIdx === null || devIdx === undefined) ? null : parseInt(devIdx);
       try {
         const res = await fetch('/api/audio/set_mic', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ device: parseInt(devIdx) })
+          body: JSON.stringify({ device: targetVal })
         });
         const data = await res.json();
         if (data.ok) {
-          showMascotBubble(`Микрофон переключен на: ${data.mic_name || devIdx}`);
+          const micLabel = data.mic_name || (targetVal === null ? 'Автовыбор' : devIdx);
+          showMascotBubble(`Микрофон переключен на: ${micLabel}`);
         }
       } catch (e) {}
     }
